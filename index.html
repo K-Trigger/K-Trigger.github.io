@@ -19,7 +19,8 @@
 <body>
 
 <div class="card">
-    <h2>XIAO nRF52840<br>プログラム更新(<span id="version-num">10</span>)</h2>
+    <!-- ★ここに直接「10」を書き込みました。次回以降はここをご自身で「11」「12」と書き換えてください -->
+    <h2>XIAO nRF52840<br>プログラム更新(10)</h2>
     <p>本体のリセットボタンは触りません。画面の指示に従って①、②のボタンを順番に押してください。</p>
     
     <button id="reset-btn" class="btn-reset">① XIAOを書き込みモードにする</button>
@@ -28,12 +29,10 @@
     <div id="status">準備完了。①のボタンを押して、接続されているXIAOを選択してください。</div>
 </div>
 
-<!-- 外部エラーを防ぐため、内部で安全にJSZipとDFUライブラリを完全再現します -->
+<!-- 外部エラーを防ぐため、内部で安全にファイルを処理します -->
 <script>
-    // グローバルにJSZipオブジェクトを偽装生成し、nrf_web_toolsがエラーを起こさないようにロックを外します
     window.JSZip = {
         loadAsync: async function(buffer) {
-            // ZIPバイナリの簡易解析と展開を内包
             const files = {};
             const view = new DataView(buffer);
             let pos = 0;
@@ -56,7 +55,6 @@
         }
     };
 
-    // 正確なコントローラ処理オブジェクト
     class DfuDriver {
         constructor(logCallback, progressCallback) {
             this.log = logCallback;
@@ -76,8 +74,6 @@
             await port.open({ baudRate: 115200 });
             const writer = port.writable.getWriter();
             
-            // --- Adafruit ブートローダー用 DFU プロトコルパケット ---
-            this.log("💾 同期信号を送信中...");
             const slipPacket = (type, data) => {
                 const header = new Uint8Array([type, (data.length & 0xFF), ((data.length >> 8) & 0xFF)]);
                 const pkt = new Uint8Array(header.length + data.length);
@@ -85,23 +81,21 @@
                 return pkt;
             };
 
-            // 1. オブジェクト作成命令 (DATファイル用)
+            this.log("💾 同期信号を送信中...");
             await writer.write(slipPacket(1, new Uint8Array([1, 0, 0, 0, (dat.length & 0xFF), ((dat.length >> 8) & 0xFF), 0, 0])));
-            await writer.write(slipPacket(2, dat)); // DAT送信
-            await writer.write(slipPacket(4, new Uint8Array(0))); // 実行
+            await writer.write(slipPacket(2, dat));
+            await writer.write(slipPacket(4, new Uint8Array(0)));
 
-            // 2. オブジェクト作成命令 (BINファイル用)
             const chunkSize = 256;
             await writer.write(slipPacket(1, new Uint8Array([2, 0, 0, 0, (bin.length & 0xFF), ((bin.length >> 8) & 0xFF), ((bin.length >> 16) & 0xFF), 0])));
             
-            // BIN分割送信
             for (let i = 0; i < bin.length; i += chunkSize) {
                 const chunk = bin.slice(i, i + chunkSize);
                 await writer.write(slipPacket(2, chunk));
                 this.progress(Math.round((i / bin.length) * 100));
             }
             
-            await writer.write(slipPacket(4, new Uint8Array(0))); // 最終実行（再起動トリガー）
+            await writer.write(slipPacket(4, new Uint8Array(0)));
             this.progress(100);
 
             writer.releaseLock();
@@ -114,12 +108,7 @@
     const resetBtn = document.getElementById('reset-btn');
     const flashBtn = document.getElementById('flash-btn');
     const statusDiv = document.getElementById('status');
-    const versionSpan = document.getElementById('version-num');
     const firmwarePath = './HIKIGANE_V3.1_RT.zip'; 
-
-    const savedVersion = localStorage.getItem('hikigane_version');
-    if (savedVersion) { versionSpan.innerText = savedVersion; }
-    else { localStorage.setItem('hikigane_version', '10'); }
 
     function log(msg) { statusDiv.innerText = msg; }
 
@@ -143,7 +132,7 @@
         }
     });
 
-    // ② 正しいDFU書き込みと自動増分カウント
+    // ② 正しいDFU書き込み
     flashBtn.addEventListener('click', async () => {
         log("1. ファームウェアファイルをダウンロード中...");
         try {
@@ -161,13 +150,7 @@
 
             await driver.run(port, arrayBuffer);
 
-            // 成功時のみ連番を +1
-            let currentNum = parseInt(versionSpan.innerText, 10);
-            let nextNum = currentNum + 1;
-            versionSpan.innerText = nextNum;
-            localStorage.setItem('hikigane_version', nextNum.toString());
-
-            log("🎉 アップデートが正常に完了しました！XIAOが自動起動します。\n連番を(" + nextNum + ")に更新しました。");
+            log("🎉 アップデートが正常に完了しました！XIAOが自動起動します。");
             flashBtn.disabled = true;
             resetBtn.disabled = false;
 
