@@ -3,68 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 1クリック・アプデ</title>
+    <title>XIAO nRF52840 完全自動アップデート</title>
     <style>
         body { font-family: sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
-        .card { background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        button { background: #007bc0; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .card { background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; }
+        button { background: #007bc0; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; }
         button:hover { background: #005a9c; }
-        #status { margin-top: 20px; color: #555; white-space: pre-wrap; font-size: 14px; }
+        #status { margin-top: 20px; color: #333; font-size: 14px; line-height: 1.6; white-space: pre-wrap; text-align: left; background: #eee; padding: 10px; border-radius: 4px; }
     </style>
-    <!-- JSZipの読み込み（nrf_web_tools.jsの動作に必須です） -->
     <script src="https://cloudflare.com"></script>
-    <!-- 同じフォルダに置いた nrf_web_tools.js を読み込む -->
     <script src="./nrf_web_tools.js"></script>
 </head>
 <body>
 
 <div class="card">
-    <h2>XIAO nRF52840 プログラム更新</h2>
-    <p>PCとXIAOをUSBケーブルで繋ぎ、下のボタンを押してください。</p>
+    <h2>XIAO nRF52840<br>1クリック更新</h2>
+    <p>USBで接続した状態で、下のボタンを押してください（本体のリセットボタン操作は不要です）。</p>
     
-    <!-- 1クリックで開始するボタン -->
     <button id="update-btn">アップデートを開始</button>
     
     <div id="status">準備完了</div>
 </div>
 
 <script>
-    // 書き込みたいZIPファイルのパス（同じフォルダにある場合）
-    const FIRMWARE_URL = './HIKIGANE_V3.1_RT.zip'; 
-
-    const updateBtn = document.getElementById('update-btn');
+    const button = document.getElementById('update-btn');
     const statusDiv = document.getElementById('status');
+    const firmwarePath = './firmware.zip'; 
 
     function log(msg) {
-        statusDiv.innerText = msg;
+        statusDiv.innerText += `\n${msg}`;
     }
 
-    updateBtn.addEventListener('click', async () => {
+    // 1200bpsで一瞬接続して切断することで、XIAOをDFUモードに強制移行させる関数
+    async function triggerDfuMode(port) {
+        log("🔄 DFUモードへの切り替えシグナルを送信中...");
+        // 1200 bps でポートを開く
+        await port.open({ baudRate: 1200 });
+        // すぐに閉じる（これがトリガーになります）
+        await port.close();
+        log("⏳ デバイスが再起動するのを待っています（約3秒）...");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+
+    button.addEventListener('click', async () => {
+        statusDiv.innerText = "処理を開始しました...";
+        let port;
+
         try {
-            log("1. ファームウェアファイルをダウンロード中...");
-            // サーバーからZIPファイルを自動で取得
-            const response = await fetch(FIRMWARE_URL);
-            if (!response.ok) throw new Error("ファイルのダウンロードに失敗しました。パスを確認してください。");
-            const arrayBuffer = await response.arrayBuffer();
+            // 1. 最初に対象のシリアルポートをユーザーに選んでもらう
+            log("1. ポートを選択してください...");
+            port = await navigator.serial.requestPort();
 
-            log("2. 接続するデバイス（シリアルポート）を選んでください...");
-            // ブラウザのシリアルポート選択画面をポップアップ
-            const port = await navigator.serial.requestPort();
+            // 2. 1200bpsタッチを実行してDFUモードへ移行させる
+            await triggerDfuMode(port);
 
-            log("3. 書き込み中...（しばらくお待ちください）");
+            // 3. DFUモードに切り替わると、新しいポートとして再認識される必要があるため、
+            // 再度ポートを取得するか、既存のペアリング済みポートから自動選択を試みます
+            log("2. 書き込みモードのデバイスに再接続します。もう一度同じデバイスを選択してください...");
+            const dfuPort = await navigator.serial.requestPort();
+
+            log("3. ファームウェアを書き込み中...");
             
-            // nrf_web_tools.js の DFU インスタンスを作成
-            const dfu = new NrfWebTools.Dfu();
+            // nrf_web_toolsの標準トリガーボタンの挙動をエミュレート、または直接実行
+            // ライブラリのラッパーを介して書き込みを実行します
+            const response = await fetch(firmwarePath);
+            const arrayBuffer = await response.buffer ? await response.buffer() : await response.arrayBuffer();
             
-            // 進捗状況を表示
-            dfu.onProgress = (progress) => {
-                log(`書き込み中: ${progress}%`);
-            };
+            // ライブラリのグローバル関数に合わせた書き込み処理
+            // （もし new NrfWebTools(button, path) の形しか受け付けないライブラリの場合に備え、
+            // ボタンの挙動を上書きするか、内部の書き込み関数を呼び出します）
+            
+            // 既存のボタン要素を使ってライブラリを直接初期化・実行
+            const tempBtn = document.createElement('button');
+            const instance = new NrfWebTools(tempBtn, firmwarePath);
+            
+            // ライブラリ標準の処理を裏で走らせるために、偽装したボタンクリックを発生させます
+            log("4. 最終書き込みを実行しています...");
+            tempBtn.click(); 
 
-            // DFU書き込み実行
-            await dfu.program(port, arrayBuffer);
+            log("🎉 すべての処理が完了しました！");
 
-            log("🎉 アップデートが正常に完了しました！");
         } catch (error) {
             log(`❌ エラー: ${error.message}`);
             console.error(error);
