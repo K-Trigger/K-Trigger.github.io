@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XIAO nRF52840 ファームウェア書き込みページ</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f8f9fa;
+            color: #333;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        h1 { text-align: center; color: #0066cc; }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .step { font-weight: bold; color: #0066cc; }
+        button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover { background-color: #0056b3; }
+        #status {
+            margin-top: 15px;
+            padding: 10px;
+            background: #e9ecef;
+            border-left: 4px solid #6c757d;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success { border-left-color: #28a745 !important; background-color: #d4edda !important; }
+    </style>
+</head>
+<body>
+
+    <h1>XIAO nRF52840<br>ソフト書き込みインストーラー</h1>
+
+    <div class="card">
+        <p><span class="step">準備:</span> XIAO nRF52840 をUSBケーブルでPCに接続してください。</p>
+    </div>
+
+    <div class="card">
+        <p><span class="step">ステップ 1:</span> 下のボタンを押し、一覧からXIAOのシリアルポート（COMポート）を選択してください。</p>
+        <button id="flashBtn">接続して書き込みモードにする</button>
+        <div id="status">ここに現在の状態が表示されます。</div>
+    </div>
+
+    <div class="card">
+        <p><span class="step">ステップ 2:</span> </p>
+        <p>ボタンを押すと、パソコン画面に自動的に<b>「XIAO-SENSE」という名前のフォルダ（ドライブ）</b>がパッと開きます。</p>
+        <p>同時にブラウザからダウンロードされたソフトのファイル（<code>firmware.uf2</code>）を、そのフォルダの中に<b>ドラッグ＆ドロップ（コピー）</b>してください。</p>
+        <p>※コピーが終わると自動的に再起動し、新しいソフトが動き出します！</p>
+    </div>
+
+    <script>
+        // 🛠️ 設定：GitHub上に用意する書き込み用ファームウェアのファイル名
+        // index.html と同じ場所にこのファイルをアップロードしておいてください。
+        const FIRMWARE_URL = 'firmware.uf2'; 
+
+        const flashBtn = document.getElementById('flashBtn');
+        const statusDiv = document.getElementById('status');
+
+        flashBtn.addEventListener('click', async () => {
+            if (!('serial' in navigator)) {
+                alert('お使いのブラウザは Web Serial API に非対応です。Chrome または Edge をお使いください。');
+                return;
+            }
+
+            statusDiv.textContent = "⏳ ポートの選択を待っています...";
+            statusDiv.className = "";
+
+            try {
+                // 1. ユーザーにシリアルポートを選択してもらう
+                const port = await navigator.serial.requestPort();
+                
+                statusDiv.textContent = "⚡ XIAOをリセットモードへ切り替えています（1200bps通信中）...";
+
+                // 2. 特殊なリセット速度「1200 bps」でポートを瞬時に開閉する
+                // これによりXIAO内部のタイマーが働き、ブートローダー（フォルダが開くモード）に移行します
+                await port.open({ baudRate: 1200 });
+                // ほんの少し待ってから閉じます
+                await new Promise(resolve => setTimeout(resolve, 200));
+                await port.close();
+
+                statusDiv.textContent = "📂 XIAOが書き込みモードになりました！PCにフォルダが開いたか確認してください。\n\n⏳ 続いて、書き込むソフト（UF2ファイル）をダウンロードします...";
+
+                // 3. 同時に、同じリリポジトリにあるソフト(UF2ファイル)をブラウザにダウンロードさせる
+                const a = document.createElement('a');
+                a.href = FIRMWARE_URL;
+                a.download = FIRMWARE_URL.split('/').pop();
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                statusDiv.textContent += "\n\n🟢 成功！ダウンロードしたファイルを「XIAO-SENSE」フォルダにコピーしてください。";
+                statusDiv.className = "success";
+
+            } catch (error) {
+                statusDiv.textContent = "❌ エラーが発生しました:\n" + error.message;
+                console.error(error);
+            }
+        });
+    </script>
+</body>
+</html>
