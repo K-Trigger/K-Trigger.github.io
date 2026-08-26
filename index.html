@@ -3,99 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 ワンクリック更新ツール</title>
+    <title>XIAO nRF52840 1クリック・アプデ</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f3f4f6; color: #1f2937; text-align: center; padding: 50px 20px; }
-        .card { max-width: 500px; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin: 0 auto; }
-        h1 { font-size: 22px; color: #2563eb; margin-bottom: 8px; }
-        p { font-size: 14px; color: #4b5563; line-height: 1.6; }
-        .btn { background: #2563eb; color: white; padding: 14px 28px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; box-sizing: border-box; transition: background 0.2s; margin-top: 20px; }
-        .btn:hover { background: #1d4ed8; }
-        .btn:disabled { background: #9ca3af; cursor: not-allowed; }
-        #status-log { margin-top: 25px; font-size: 14px; padding: 15px; border-radius: 8px; background: #f9fafb; border: 1px solid #e5e7eb; min-height: 30px; text-align: left; white-space: pre-line; font-family: monospace; }
-        .progress-container { width: 100%; background: #e5e7eb; height: 8px; border-radius: 4px; margin-top: 15px; display: none; overflow: hidden; }
-        .progress-bar { width: 0%; background: #10b981; height: 100%; transition: width 0.1s ease; }
+        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
+        .card { background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        button { background: #007bc0; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #005a9c; }
+        #status { margin-top: 20px; color: #555; white-space: pre-wrap; font-size: 14px; }
     </style>
-    
-    <!-- ⚠️【重要】nrf-web-tools の公式JSライブラリを読み込みます -->
-    <script src="nrf-web-tools.js"></script>
+    <!-- JSZipの読み込み（nrf_web_tools.jsの動作に必須です） -->
+    <script src="https://cloudflare.com"></script>
+    <!-- 同じフォルダに置いた nrf_web_tools.js を読み込む -->
+    <script src="./nrf_web_tools.js"></script>
 </head>
 <body>
 
 <div class="card">
-    <h1>XIAO nRF52840 自動アップデート nrf-web-tools</h1>
-    <p>USBケーブルでデバイスをPCに接続し、下のボタンを押してください。<br>ケースを開けたりボタンを押す必要はありません。</p>
-
-    <button id="updateBtn" class="btn">アップデートを開始する</button>
+    <h2>XIAO nRF52840 プログラム更新</h2>
+    <p>PCとXIAOをUSBケーブルで繋ぎ、下のボタンを押してください。</p>
     
-    <div class="progress-container" id="progContainer">
-        <div class="progress-bar" id="progBar"></div>
-    </div>
+    <!-- 1クリックで開始するボタン -->
+    <button id="update-btn">アップデートを開始</button>
     
-    <div id="status-log">デバイスの接続を待っています...</div>
+    <div id="status">準備完了</div>
 </div>
 
 <script>
-const updateBtn = document.getElementById('updateBtn');
-const statusLog = document.getElementById('status-log');
-const progContainer = document.getElementById('progContainer');
-const progBar = document.getElementById('progBar');
+    // 書き込みたいZIPファイルのパス（同じフォルダにある場合）
+    const FIRMWARE_URL = './HIKIGANE_V3.1_RT.zip'; 
 
-// 配布する正しいZIPファームウェアファイルのパスを指定
-const FIRMWARE_ZIP = 'HIKIGANE_V3.1_RT.zip';
+    const updateBtn = document.getElementById('update-btn');
+    const statusDiv = document.getElementById('status');
 
-// Web Serialのチェック
-if (!('serial' in navigator)) {
-    updateBtn.disabled = true;
-    statusLog.style.color = '#ef4444';
-    statusLog.innerText = 'エラー: お使いのブラウザは対応していません。PCのChromeまたはEdgeを使用してください。';
-}
-
-updateBtn.addEventListener('click', async () => {
-    try {
-        updateBtn.disabled = true;
-        statusLog.style.color = '#1f2937';
-        statusLog.innerText = '1. ポップアップからXIAOを選択してください...\n';
-
-        // 1. ライブラリ(nRFWebTools)の初期化とファームウェア読み込み
-        // ※裏でサーバーから自動でZIPをダウンロードして検証します
-        const flasher = new nRFWebTools();
-        statusLog.innerText += 'ファームウェアデータを検証中...\n';
-        await flasher.loadFirmware(FIRMWARE_ZIP);
-
-        // 2. ユーザーが選んだポートをキャッチして処理を開始
-        const port = await navigator.serial.requestPort();
-        statusLog.innerText += '2. デバイスに接続しました。自動リセット(1200bps)を送信中...\n';
-
-        // 3. ライブラリの機能を使って、自動変身＆自動追跡をスタート
-        // 1200bpsリセット、ポートの自動再割り当て、DFUプロトコルでの会話を1命令で全て代行してくれます
-        progContainer.style.style = 'block';
-        
-        await flasher.flash(port, {
-            onStatus: (message) => {
-                // ライブラリからの進捗メッセージ（「接続中」「消去中」など）を表示
-                statusLog.innerText += `-> ${message}\n`;
-            },
-            onProgress: (percent) => {
-                // 書き込みの進捗バーを更新
-                progContainer.style.display = 'block';
-                progBar.style.width = percent + '%';
-            }
-        });
-
-        // 4. すべての処理が成功すると、ライブラリが自動で「起動命令」を送り再起動させます
-        statusLog.style.color = '#10b981';
-        statusLog.innerText += '\n🎉 完全完了しました！プログラムが自動起動します。';
-        updateBtn.disabled = false;
-
-    } catch (error) {
-        console.error(error);
-        statusLog.style.color = '#ef4444';
-        statusLog.innerText += `\n❌ エラーが発生しました: ${error.message}`;
-        updateBtn.disabled = false;
-        progContainer.style.display = 'none';
+    function log(msg) {
+        statusDiv.innerText = msg;
     }
-});
+
+    updateBtn.addEventListener('click', async () => {
+        try {
+            log("1. ファームウェアファイルをダウンロード中...");
+            // サーバーからZIPファイルを自動で取得
+            const response = await fetch(FIRMWARE_URL);
+            if (!response.ok) throw new Error("ファイルのダウンロードに失敗しました。パスを確認してください。");
+            const arrayBuffer = await response.arrayBuffer();
+
+            log("2. 接続するデバイス（シリアルポート）を選んでください...");
+            // ブラウザのシリアルポート選択画面をポップアップ
+            const port = await navigator.serial.requestPort();
+
+            log("3. 書き込み中...（しばらくお待ちください）");
+            
+            // nrf_web_tools.js の DFU インスタンスを作成
+            const dfu = new NrfWebTools.Dfu();
+            
+            // 進捗状況を表示
+            dfu.onProgress = (progress) => {
+                log(`書き込み中: ${progress}%`);
+            };
+
+            // DFU書き込み実行
+            await dfu.program(port, arrayBuffer);
+
+            log("🎉 アップデートが正常に完了しました！");
+        } catch (error) {
+            log(`❌ エラー: ${error.message}`);
+            console.error(error);
+        }
+    });
 </script>
 
 </body>
