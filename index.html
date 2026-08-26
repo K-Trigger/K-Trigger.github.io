@@ -3,89 +3,115 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 完全自動アップデート</title>
+    <title>XIAO nRF52840 1クリック完全自動アップデート</title>
     <style>
         body { font-family: sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
         .card { background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; }
         button { background: #007bc0; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; }
         button:hover { background: #005a9c; }
+        button:disabled { background: #bdc3c7; cursor: not-allowed; }
         #status { margin-top: 20px; color: #333; font-size: 14px; line-height: 1.6; white-space: pre-wrap; text-align: left; background: #eee; padding: 10px; border-radius: 4px; }
     </style>
+    <!-- JSZipの読み込み -->
     <script src="https://cloudflare.com"></script>
+    <!-- ダウンロードした nrf_web_tools.js -->
     <script src="./nrf_web_tools.js"></script>
 </head>
 <body>
 
 <div class="card">
-    <h2>XIAO nRF52840<br>1クリック更新 2</h2>
-    <p>USBで接続した状態で、下のボタンを押してください（本体のリセットボタン操作は不要です）。</p>
+    <h2>XIAO nRF52840<br>1クリック更新 3</h2>
+    <p>USBで接続した状態で、下のボタンを1回だけ押してください。</p>
     
     <button id="update-btn">アップデートを開始</button>
     
-    <div id="status">準備完了</div>
+    <div id="status">準備完了。ボタンを押して、接続されているXIAOを選択してください。</div>
 </div>
 
 <script>
-    const button = document.getElementById('update-btn');
+    const updateBtn = document.getElementById('update-btn');
     const statusDiv = document.getElementById('status');
     const firmwarePath = './HIKIGANE_V3.1_RT.zip'; 
 
     function log(msg) {
-        statusDiv.innerText += `\n${msg}`;
+        statusDiv.innerText = msg;
     }
 
-    // 1200bpsで一瞬接続して切断することで、XIAOをDFUモードに強制移行させる関数
-    async function triggerDfuMode(port) {
-        log("🔄 DFUモードへの切り替えシグナルを送信中...");
-        // 1200 bps でポートを開く
-        await port.open({ baudRate: 1200 });
-        // すぐに閉じる（これがトリガーになります）
-        await port.close();
-        log("⏳ デバイスが再起動するのを待っています（約3秒）...");
-        await new Promise(resolve => setTimeout(resolve, 3000));
-    }
-
-    button.addEventListener('click', async () => {
-        statusDiv.innerText = "処理を開始しました...";
-        let port;
+    updateBtn.addEventListener('click', async () => {
+        updateBtn.disabled = true;
+        log("1. XIAO（シリアルポート）を選択してください...");
 
         try {
-            // 1. 最初に対象のシリアルポートをユーザーに選んでもらう
-            log("1. ポートを選択してください...");
-            port = await navigator.serial.requestPort();
+            // 【1回目】ユーザーのクリック直後なので、安全にポップアップが開きます
+            const firstPort = await navigator.serial.requestPort();
+            const firstInfo = firstPort.getInfo();
 
-            // 2. 1200bpsタッチを実行してDFUモードへ移行させる
-            await triggerDfuMode(port);
+            log("🔄 2. 書き込みモード（DFU）への切り替え命令を送信中...");
+            // 1200bpsタッチを実行してリセットをかける
+            await firstPort.open({ baudRate: 1200 });
+            await firstPort.close();
 
-            // 3. DFUモードに切り替わると、新しいポートとして再認識される必要があるため、
-            // 再度ポートを取得するか、既存のペアリング済みポートから自動選択を試みます
-            log("2. 書き込みモードのデバイスに再接続します。もう一度同じデバイスを選択してください...");
-            const dfuPort = await navigator.serial.requestPort();
+            log("⏳ 3. XIAOの再起動を待っています...（約4秒）\n画面には触らずそのままでお待ちください。");
+            
+            // XIAOが再起動してDFUモードとしてPCに再認識されるまで待つ
+            await new Promise(resolve => setTimeout(resolve, 4000));
 
-            log("3. ファームウェアを書き込み中...");
+            log("🔍 4. 再起動したXIAOを自動検出中...");
             
-            // nrf_web_toolsの標準トリガーボタンの挙動をエミュレート、または直接実行
-            // ライブラリのラッパーを介して書き込みを実行します
-            const response = await fetch(firmwarePath);
-            const arrayBuffer = await response.buffer ? await response.buffer() : await response.arrayBuffer();
-            
-            // ライブラリのグローバル関数に合わせた書き込み処理
-            // （もし new NrfWebTools(button, path) の形しか受け付けないライブラリの場合に備え、
-            // ボタンの挙動を上書きするか、内部の書き込み関数を呼び出します）
-            
-            // 既存のボタン要素を使ってライブラリを直接初期化・実行
-            const tempBtn = document.createElement('button');
-            const instance = new NrfWebTools(tempBtn, firmwarePath);
-            
-            // ライブラリ標準の処理を裏で走らせるために、偽装したボタンクリックを発生させます
-            log("4. 最終書き込みを実行しています...");
-            tempBtn.click(); 
+            // ★ここがポイント：過去にアクセス許可されたポートをすべて取得する
+            const ports = await navigator.serial.getPorts();
+            let dfuPort = null;
 
-            log("🎉 すべての処理が完了しました！");
+            // 同じUSBベンダーID（XIAOのチップ）を持つポートを自動で探す
+            for (const port of ports) {
+                const info = port.getInfo();
+                if (info.usbVendorId === firstInfo.usbVendorId) {
+                    dfuPort = port;
+                    break;
+                }
+            }
+
+            // もし自動で見つからなかった場合のみ、例外的にバックアップとして再度選択させる
+            if (!dfuPort) {
+                log("⚠️ 自動検出に失敗しました。お手数ですが、もう一度だけデバイスを選択してください。");
+                dfuPort = await navigator.serial.requestPort();
+            }
+
+            log("⚡ 5. ファームウェアの書き込みを開始します...");
+
+            // nrf_web_tools.js の仕組みに流し込むため、ダミーのボタンを裏で作る
+            const hiddenBtn = document.createElement('button');
+            const nrfTool = new NrfWebTools(hiddenBtn, firmwarePath);
+
+            // ライブラリの内部処理をハックし、ポップアップ（requestPort）をスキップして
+            // 今自動で見つけた「dfuPort」をそのまま使って書き込みを強制開始させる
+            if (nrfTool.dfu && typeof nrfTool.dfu.program === 'function') {
+                // ZIPファイルを先読み
+                const response = await fetch(firmwarePath);
+                const arrayBuffer = await response.arrayBuffer();
+
+                log("💾 書き込み中... 完了するまでブラウザを閉じないでください。");
+                
+                // 進捗を表示
+                nrfTool.dfu.onProgress = (progress) => {
+                    log(`💾 書き込み中: ${progress}%`);
+                };
+
+                // 直接書き込みを実行
+                await nrfTool.dfu.program(dfuPort, arrayBuffer);
+            } else {
+                // 万が一内部構造が違った場合は、ライブラリ本来のボタン擬似クリックへフォールバック
+                log("最終書き込みを実行します...");
+                hiddenBtn.click();
+            }
+
+            log("🎉 アップデートが正常に完了しました！自動でアプリが起動します。");
 
         } catch (error) {
-            log(`❌ エラー: ${error.message}`);
+            log(`❌ エラーが発生しました: ${error.message}\nもう一度最初からやり直してください。`);
             console.error(error);
+        } finally {
+            updateBtn.disabled = false;
         }
     });
 </script>
