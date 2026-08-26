@@ -3,102 +3,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 ワンクリック更新</title>
+    <title>XIAO nRF52840 ワンクリック更新ツール</title>
     <style>
-        body { font-family: sans-serif; background: #f0f2f5; text-align: center; padding: 50px 20px; }
-        .card { max-width: 500px; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin: 0 auto; }
-        h1 { font-size: 20px; color: #0066cc; margin-bottom: 20px; }
-        .btn { background: #0076ff; color: white; padding: 15px 30px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; box-sizing: border-box; }
-        .btn:disabled { background: #cbd5e1; cursor: not-allowed; }
-        #status { margin-top: 25px; font-weight: bold; background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; min-height: 24px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f3f4f6; color: #1f2937; text-align: center; padding: 50px 20px; }
+        .card { max-width: 500px; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin: 0 auto; }
+        h1 { font-size: 22px; color: #2563eb; margin-bottom: 8px; }
+        p { font-size: 14px; color: #4b5563; line-height: 1.6; }
+        .btn { background: #2563eb; color: white; padding: 14px 28px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; box-sizing: border-box; transition: background 0.2s; margin-top: 20px; }
+        .btn:hover { background: #1d4ed8; }
+        .btn:disabled { background: #9ca3af; cursor: not-allowed; }
+        #status-log { margin-top: 25px; font-size: 14px; padding: 15px; border-radius: 8px; background: #f9fafb; border: 1px solid #e5e7eb; min-height: 30px; text-align: left; white-space: pre-line; font-family: monospace; }
+        .progress-container { width: 100%; background: #e5e7eb; height: 8px; border-radius: 4px; margin-top: 15px; display: none; overflow: hidden; }
+        .progress-bar { width: 0%; background: #10b981; height: 100%; transition: width 0.1s ease; }
     </style>
+    
+    <!-- ⚠️【重要】nrf-web-tools の公式JSライブラリを読み込みます -->
+    <script src="nrf-web-tools.js"></script>
 </head>
 <body>
 
 <div class="card">
-    <h1>XIAO nRF52840 全自動アップデート</h1>
-    <p>USBでPCに接続し、下のボタンを1回だけ押してください。</p>
+    <h1>XIAO nRF52840 自動アップデート</h1>
+    <p>USBケーブルでデバイスをPCに接続し、下のボタンを押してください。<br>ケースを開けたりボタンを押す必要はありません。</p>
 
     <button id="updateBtn" class="btn">アップデートを開始する</button>
-    <div id="status">デバイスの接続を待っています...</div>
+    
+    <div class="progress-container" id="progContainer">
+        <div class="progress-bar" id="progBar"></div>
+    </div>
+    
+    <div id="status-log">デバイスの接続を待っています...</div>
 </div>
 
 <script>
 const updateBtn = document.getElementById('updateBtn');
-const statusDiv = document.getElementById('status');
+const statusLog = document.getElementById('status-log');
+const progContainer = document.getElementById('progContainer');
+const progBar = document.getElementById('progBar');
 
-// Web Serial APIが使えるか確認
+// 配布する正しいZIPファームウェアファイルのパスを指定
+const FIRMWARE_ZIP = 'HIKIGANE_V3.1_RT.zip';
+
+// Web Serialのチェック
 if (!('serial' in navigator)) {
     updateBtn.disabled = true;
-    statusDiv.style.color = 'red';
-    statusDiv.innerText = 'エラー: お使いのブラウザは対応していません。ChromeまたはEdgeをご使用ください。';
+    statusLog.style.color = '#ef4444';
+    statusLog.innerText = 'エラー: お使いのブラウザは対応していません。PCのChromeまたはEdgeを使用してください。';
 }
 
 updateBtn.addEventListener('click', async () => {
     try {
         updateBtn.disabled = true;
-        statusDiv.style.color = '#333';
-        statusDiv.innerText = '1. ポップアップからXIAOを選択してください...';
+        statusLog.style.color = '#1f2937';
+        statusLog.innerText = '1. ポップアップからXIAOを選択してください...\n';
 
-        // 【ステップ1】 ユーザーのクリック直後にポップアップを開く
-        const currentPort = await navigator.serial.requestPort();
+        // 1. ライブラリ(nRFWebTools)の初期化とファームウェア読み込み
+        // ※裏でサーバーから自動でZIPをダウンロードして検証します
+        const flasher = new nRFWebTools();
+        statusLog.innerText += 'ファームウェアデータを検証中...\n';
+        await flasher.loadFirmware(FIRMWARE_ZIP);
+
+        // 2. ユーザーが選んだポートをキャッチして処理を開始
+        const port = await navigator.serial.requestPort();
+        statusLog.innerText += '2. デバイスに接続しました。自動リセット(1200bps)を送信中...\n';
+
+        // 3. ライブラリの機能を使って、自動変身＆自動追跡をスタート
+        // 1200bpsリセット、ポートの自動再割り当て、DFUプロトコルでの会話を1命令で全て代行してくれます
+        progContainer.style.style = 'block';
         
-        statusDiv.innerText = '2. 自動リセット信号（1200bps）を送信中...';
-        
-        // ★重要：変身後の「新しいXIAO（ブートローダー）」がUSBに挿さる瞬間を待ち受けるイベントをセット
-        const bootloaderPromise = new Promise((resolve) => {
-            const onConnect = (event) => {
-                // 新しく検出されたポート（変身後のブートローダーポート）を返す
-                navigator.serial.removeEventListener('connect', onConnect);
-                resolve(event.target);
-            };
-            navigator.serial.addEventListener('connect', onConnect);
+        await flasher.flash(port, {
+            onStatus: (message) => {
+                // ライブラリからの進捗メッセージ（「接続中」「消去中」など）を表示
+                statusLog.innerText += `-> ${message}\n`;
+            },
+            onProgress: (percent) => {
+                // 書き込みの進捗バーを更新
+                progContainer.style.display = 'block';
+                progBar.style.width = percent + '%';
+            }
         });
 
-        // 1200bpsで開き、ケース内ボタン2回押しを再現してすぐ閉じる
-        await currentPort.open({ baudRate: 1200 });
-        await new Promise(resolve => setTimeout(resolve, 200));
-        await currentPort.close(); // ここでXIAOのポートが消滅する
-
-        statusDiv.innerText = '3. デバイスの再起動・自動検出を待っています...';
-
-        // ★自動追跡：新しくUSBに出現したブートローダーポートをプログラムが自動でキャッチ
-        const dfuPort = await bootloaderPromise;
-
-        statusDiv.innerText = '4. 自動再接続しました。プログラムを書き込み中...';
-        
-        // 115200bpsで本番の書き込み接続を開始
-        await dfuPort.open({ baudRate: 115200 });
-
-        // サーバーから最新のファームウェアバイナリをダウンロード
-        const response = await fetch('HIKIGANE_V3.1_RT.KTF');
-        if (!response.ok) throw new Error('ファームウェアファイルが見つかりません。');
-        const arrayBuffer = await response.arrayBuffer();
-        const firmwareData = new Uint8Array(arrayBuffer);
-
-        // データの送信処理（直接ダウンロード）
-        const writer = dfuPort.writable.getWriter();
-        const chunkSize = 64;
-        let offset = 0;
-
-        while (offset < firmwareData.length) {
-            const chunk = firmwareData.slice(offset, offset + chunkSize);
-            await writer.write(chunk);
-            offset += chunkSize;
-        }
-
-        await writer.close();
-        await dfuPort.close();
-
-        statusDiv.style.color = 'green';
-        statusDiv.innerText = '🎉 完全完了しました！プログラムが自動起動します。';
+        // 4. すべての処理が成功すると、ライブラリが自動で「起動命令」を送り再起動させます
+        statusLog.style.color = '#10b981';
+        statusLog.innerText += '\n🎉 完全完了しました！プログラムが自動起動します。';
         updateBtn.disabled = false;
 
     } catch (error) {
         console.error(error);
-        statusDiv.style.color = 'red';
-        statusDiv.innerText = 'エラー: ' + error.message;
+        statusLog.style.color = '#ef4444';
+        statusLog.innerText += `\n❌ エラーが発生しました: ${error.message}`;
         updateBtn.disabled = false;
+        progContainer.style.display = 'none';
     }
 });
 </script>
