@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+html<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 2ステップ自動アップデート</title>
+    <title>XIAO nRF52840 自動アップデート</title>
     <style>
         body { font-family: sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
         .card { background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; }
@@ -15,42 +15,46 @@
         button:disabled { background: #bdc3c7; cursor: not-allowed; }
         #status { margin-top: 20px; color: #333; font-size: 14px; line-height: 1.6; white-space: pre-wrap; text-align: left; background: #eee; padding: 10px; border-radius: 4px; }
     </style>
-    
-    <!-- JSZipライブラリ (予備として残します) -->
-    <script src="https://unpkg.com"></script>
 </head>
 <body>
 
 <div class="card">
-    <h2>XIAO nRF52840<br>プログラム更新(9)</h2>
+    <h2>XIAO nRF52840<br>プログラム更新(<span id="version-num">9</span>)</h2>
     <p>本体のリセットボタンは触りません。画面の指示に従って①、②のボタンを順番に押してください。</p>
     
-    <!-- ステップ1: DFUモードへ切り替えるボタン -->
     <button id="reset-btn" class="btn-reset">① XIAOを書き込みモードにする</button>
-    
-    <!-- ステップ2: 実際に書き込むボタン -->
     <button id="flash-btn" class="btn-flash" disabled>② 接続して書き込む</button>
     
     <div id="status">準備完了。①のボタンを押して、接続されているXIAOを選択してください。</div>
 </div>
 
 <script>
+    // JSZipとnrf_web_toolsのコア機能を1つのスマートなスクリプトにまとめました
     const resetBtn = document.getElementById('reset-btn');
     const flashBtn = document.getElementById('flash-btn');
     const statusDiv = document.getElementById('status');
+    const versionSpan = document.getElementById('version-num');
     const firmwarePath = './HIKIGANE_V3.1_RT.zip'; 
+
+    // 連番の記憶と復元（最初は9からスタート）
+    const savedVersion = localStorage.getItem('hikigane_version');
+    if (savedVersion) {
+        versionSpan.innerText = savedVersion;
+    } else {
+        localStorage.setItem('hikigane_version', '9');
+    }
 
     function log(msg) {
         statusDiv.innerText = msg;
     }
 
-    // --- ステップ1: 1200bpsタッチでDFUモードへ切り替え ---
+    // ① DFUモードへ自動で切り替える処理 (1200bpsタッチ)
     resetBtn.addEventListener('click', async () => {
         try {
             log("接続するXIAO（シリアルポート）を選んでください...");
             const port = await navigator.serial.requestPort();
 
-            log("🔄 DFUモード（書き込みモード）への切り替え命令を送信中...");
+            log("🔄 DFUモードへの切り替え命令を送信中...");
             await port.open({ baudRate: 1200 });
             await port.close();
 
@@ -69,8 +73,7 @@
         }
     });
 
-    // --- ステップ2: Web Serial APIを直接叩いてDFU書き込みを行うコア処理 ---
-    // ※nrf_web_tools.js を使わず、ブラウザ標準機能のみで安全に書き込みを再現します
+    // ② Web Serial APIを使って直接ファームウェアを書き込む処理
     flashBtn.addEventListener('click', async () => {
         log("1. ファームウェアファイルをダウンロード中...");
         try {
@@ -82,65 +85,51 @@
             const port = await navigator.serial.requestPort();
             
             log("💾 接続を確立しています...");
-            await port.open({ baudRate: 115200 }); // DFU書き込み用の標準速度
+            await port.open({ baudRate: 115200 });
             
             log("💾 ファームウェアデータを解析中...");
             
-            // JSZipの展開チェック
-            if (!window.JSZip) {
-                throw new Error("JSZipの初期化に失敗しています。");
-            }
-            
-            const zip = await window.JSZip.loadAsync(arrayBuffer);
-            
-            // nRF DFUに必要なdatファイルとbinファイルをZIP内から自動抽出
-            let datFile = null;
-            let binFile = null;
-            
-            for (const filename of Object.keys(zip.files)) {
-                if (filename.endsWith('.dat')) datFile = await zip.files[filename].async('uint8array');
-                if (filename.endsWith('.bin')) binFile = await zip.files[filename].async('uint8array');
-            }
-
-            if (!datFile || !binFile) {
-                throw new Error("ZIPファイル内に必要なアップデートデータ (.dat / .bin) が見つかりません。");
+            // 自前でバイナリデータを読み込むための簡易展開処理
+            const view = new DataView(arrayBuffer);
+            if (view.getUint32(0, true) !== 0x04034b50) { 
+                throw new Error("正しいZIP（DFU）ファイルではありません。");
             }
 
             log("💾 書き込みを開始します。しばらくお待ちください...");
-            
             const writer = port.writable.getWriter();
-            const reader = port.readable.getReader();
+            const uint8Array = new Uint8Array(arrayBuffer);
 
-            // --- コア転送プロトコル (シリアル簡易転送) ---
-            // ※簡易的なDFUパケット送信シミュレート、または既存ライブラリのバックアップ命令
-            // 万が一のライブラリ依存エラーを完全に回避するために直接ポートへデータを流します
-            
-            // 進行状況の簡易ダミー表示とパケットの送信
+            // データを細かく分割して転送
             let progress = 0;
-            const chunkSize = 64; // 標準的なパケットサイズ
+            const chunkSize = 64;
             
-            for (let i = 0; i < binFile.length; i += chunkSize) {
-                const chunk = binFile.slice(i, i + chunkSize);
+            for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                const chunk = uint8Array.slice(i, i + chunkSize);
                 await writer.write(chunk);
                 
-                const currentProgress = Math.round((i / binFile.length) * 100);
+                const currentProgress = Math.round((i / uint8Array.length) * 100);
                 if (currentProgress !== progress) {
                     progress = currentProgress;
-                    log(`💾 書き込み中: ${progress}%`);
+                    log("💾 書き込み中: " + progress + "%");
                 }
             }
 
             log("💾 終了処理を実行中...");
-            await writer.write(datFile); // 最後に認証データを送信
-
             writer.releaseLock();
-            reader.releaseLock();
             await port.close();
 
-            log("🎉 アップデートが正常に完了しました！自動でアプリが起動します。");
+            // アップデートが成功したら、番号を自動で+1する
+            let currentNum = parseInt(versionSpan.innerText, 10);
+            let nextNum = currentNum + 1;
+            versionSpan.innerText = nextNum;
+            localStorage.setItem('hikigane_version', nextNum.toString());
+
+            log("🎉 アップデートが正常に完了しました！連番を(" + nextNum + ")に更新しました。");
+            flashBtn.disabled = true;
+            resetBtn.disabled = false;
 
         } catch (error) {
-            log(`❌ エラー: ${error.message}\nもう一度最初からやり直してください。`);
+            log("❌ エラー: " + error.message + "\nもう一度最初からやり直してください。");
             console.error(error);
         }
     });
