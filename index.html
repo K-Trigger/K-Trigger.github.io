@@ -56,55 +56,52 @@ startBtn.addEventListener('click', async () => {
         statusBox.style.color = '#334155';
         statusBox.innerText = '1. デバイスを選択してください...';
 
-        // 【ステップ1】 ユーザーにポートを選んでもらう（初回のみ）
+        // ★必ずユーザーがボタンを押した直後に実行（これでエラーを回避）
         port = await navigator.serial.requestPort();
         
         statusBox.innerText = '2. 自動リセット信号（1200bps）を送信中...';
         
-        // 【ステップ2】 1200bpsで開き、ケース内ボタン2回押しをソフトウェアで完全再現
+        // 1200bpsで開き、ケース内ボタン2回押しを再現してすぐ閉じる
         await port.open({ baudRate: 1200 });
         await new Promise(resolve => setTimeout(resolve, 200));
-        await port.close(); // 一度切断され、XIAOが内部で自動再起動してブートローダーになる
+        await port.close(); 
 
         statusBox.innerText = '3. デバイスの再起動を待っています（約3秒）...';
         await new Promise(resolve => setTimeout(resolve, 3000));
 
         statusBox.innerText = '4. ファームウェア転送用のポートへ自動再接続中...';
         
-        // 【ステップ3】 自動認識された新しいブートローダーポートを取得
-        // 通常は再リクエストが必要ですが、一度許可されているため自動取得を試みます
+        // ★修正ポイント：requestPort() はもう呼ばない！
+        // 一度許可されたポートは getPorts() を使って「ボタンなし」で自動取得できます
         const ports = await navigator.serial.getPorts();
-        let dfuPort = ports[ports.length - 1]; // 直近で増えたポートを指定
+        
+        // 再起動して新しく現れたブートローダー用のポート（配列の最後）を自動で指定
+        let dfuPort = ports[ports.length - 1]; 
         
         if (!dfuPort) {
-            // 万が一自動追跡に失敗した場合のみ、もう一度選択ポップアップを出す安全対策
-            statusBox.innerText = '再度デバイス（再起動後のポート）を選択してください...';
-            dfuPort = await navigator.serial.requestPort();
+            throw new Error('再起動したXIAOを自動検出できませんでした。もう一度お試しください。');
         }
 
-        // 【ステップ4】 115200bps（DFU書き込み速度）で接続開始
+        // 115200bps（DFU書き込み速度）で自動接続開始
         await dfuPort.open({ baudRate: 115200 });
         statusBox.innerText = '5. ファームウェアを直接ダウンロード・書き込み中...';
         progressBar.style.display = 'block';
 
-        // 【ステップ5】 サーバーから最新のファームウェアバイナリをダウンロードして直接流し込む
-        // ※「your_firmware.bin」は、あなたが配置する実際のファイル名に変えてください
-        const response = await fetch('HIKIGANE_V3.1_RT.bin');
+        // サーバーから最新のファームウェアバイナリをダウンロードして流し込む
+        const response = await fetch('your_firmware.bin');
         if (!response.ok) throw new Error('サーバーからファームウェアファイルを取得できませんでした。');
         const arrayBuffer = await response.arrayBuffer();
         const firmwareData = new Uint8Array(arrayBuffer);
 
         const writer = dfuPort.writable.getWriter();
-        const chunkSize = 64; // パケットサイズ
+        const chunkSize = 64; 
         let offset = 0;
 
-        // DFUプロトコルに則ってデータを細切れに直接ダウンロード書き込み
         while (offset < firmwareData.length) {
             const chunk = firmwareData.slice(offset, offset + chunkSize);
             await writer.write(chunk);
             offset += chunkSize;
 
-            // 進捗バーの更新
             const percent = Math.min(100, Math.floor((offset / firmwareData.length) * 100));
             progressFill.style.width = percent + '%';
         }
