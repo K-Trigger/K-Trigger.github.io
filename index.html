@@ -71,7 +71,7 @@ updateBtn.addEventListener('click', async () => {
         await dfuPort.open({ baudRate: 115200 });
 
         // サーバーから最新のファームウェアバイナリをダウンロード
-        const response = await fetch('your_firmware.bin');
+        const response = await fetch('HIKIGANE_V3.1_RT.bin');
         if (!response.ok) throw new Error('ファームウェアファイルが見つかりません。');
         const arrayBuffer = await response.arrayBuffer();
         const firmwareData = new Uint8Array(arrayBuffer);
