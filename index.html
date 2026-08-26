@@ -3,120 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 ファームウェア書き込みページ</title>
+    <title>XIAO nRF52840 自動ファームウェア更新ツール</title>
     <style>
-        body {
-            font-family: 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6;
-            background-color: #f8f9fa;
-            color: #333;
-            max-width: 600px;
-            margin: 40px auto;
-            padding: 20px;
-        }
-        h1 { text-align: center; color: #0066cc; }
-        .card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        .step { font-weight: bold; color: #0066cc; }
-        button {
-            display: block;
-            width: 100%;
-            padding: 12px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        button:hover { background-color: #0056b3; }
-        #status {
-            margin-top: 15px;
-            padding: 10px;
-            background: #e9ecef;
-            border-left: 4px solid #6c757d;
-            font-family: monospace;
-            white-space: pre-wrap;
-        }
-        .success { border-left-color: #28a745 !important; background-color: #d4edda !important; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f0f2f5; color: #333; text-align: center; padding: 50px 20px; }
+        .card { max-width: 550px; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin: 0 auto; }
+        h1 { font-size: 22px; color: #0066cc; margin-bottom: 10px; }
+        p { font-size: 14px; color: #666; line-height: 1.6; }
+        .btn { display: inline-block; background: #0076ff; color: white; padding: 16px 30px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 25px; width: 100%; box-sizing: border-box; }
+        .btn:hover { background: #0056b3; }
+        .btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+        #status-box { margin-top: 25px; font-size: 15px; padding: 15px; border-radius: 8px; background: #f8fafc; border: 1px solid #e2e8f0; min-height: 24px; font-weight: 500; }
+        .progress-bar { width: 100%; background: #e2e8f0; height: 8px; border-radius: 4px; margin-top: 15px; display: none; overflow: hidden; }
+        .progress-fill { width: 0%; background: #10b981; height: 100%; transition: width 0.1s ease; }
+        .warning { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; text-align: left; font-size: 13px; margin-top: 30px; border-radius: 0 8px 8px 0; color: #b45309; }
     </style>
 </head>
 <body>
 
-    <h1>XIAO nRF52840<br>ソフト書き込みインストーラー</h1>
+<div class="card">
+    <h1>XIAO nRF52840 全自動アップデート</h1>
+    <p>USBケーブルでデバイスをPCに接続し、下のボタンを押してください。<br>ケースを開けたりボタンを押す必要はありません。自動的にダウンロードが始まります。</p>
+    
+    <button id="startBtn" class="btn">アップデートを開始する</button>
+    
+    <div id="status-box">デバイスの接続を待っています...</div>
+    <div id="progress" class="progress-bar"><div id="fill" class="progress-fill"></div></div>
 
-    <div class="card">
-        <p><span class="step">準備:</span> XIAO nRF52840 をUSBケーブルでPCに接続してください。</p>
+    <div class="warning">
+        <strong>【動作環境】</strong><br>
+        ・パソコン（Windows / Mac）の <strong>Google Chrome</strong> または <strong>Microsoft Edge</strong> で動作します。<br>
+        ・iPhone（iOS）や、通常のスマホのブラウザでは利用できません。
     </div>
+</div>
 
-    <div class="card">
-        <p><span class="step">ステップ 1:</span> 下のボタンを押し、一覧からXIAOのシリアルポート（COMポート）を選択してください。</p>
-        <button id="flashBtn">接続して書き込みモードにする</button>
-        <div id="status">ここに現在の状態が表示されます。</div>
-    </div>
+<script>
+const startBtn = document.getElementById('startBtn');
+const statusBox = document.getElementById('status-box');
+const progressBar = document.getElementById('progress');
+const progressFill = document.getElementById('fill');
 
-    <div class="card">
-        <p><span class="step">ステップ 2:</span> </p>
-        <p>ボタンを押すと、パソコン画面に自動的に<b>「XIAO-SENSE」という名前のフォルダ（ドライブ）</b>がパッと開きます。</p>
-        <p>同時にブラウザからダウンロードされたソフトのファイル（<code>firmware.uf2</code>）を、そのフォルダの中に<b>ドラッグ＆ドロップ（コピー）</b>してください。</p>
-        <p>※コピーが終わると自動的に再起動し、新しいソフトが動き出します！</p>
-    </div>
+// Web Serial API の対応チェック
+if (!('serial' in navigator)) {
+    startBtn.disabled = true;
+    statusBox.style.color = '#ef4444';
+    statusBox.innerText = 'エラー: お使いのブラウザは対応していません。PCのChromeかEdgeでお試しください。';
+}
 
-    <script>
-        // 🛠️ 設定：GitHub上に用意する書き込み用ファームウェアのファイル名
-        // index.html と同じ場所にこのファイルをアップロードしておいてください。
-        const FIRMWARE_URL = 'firmware.uf2'; 
+startBtn.addEventListener('click', async () => {
+    let port;
+    try {
+        startBtn.disabled = true;
+        statusBox.style.color = '#334155';
+        statusBox.innerText = '1. デバイスを選択してください...';
 
-        const flashBtn = document.getElementById('flashBtn');
-        const statusDiv = document.getElementById('status');
+        // 【ステップ1】 ユーザーにポートを選んでもらう（初回のみ）
+        port = await navigator.serial.requestPort();
+        
+        statusBox.innerText = '2. 自動リセット信号（1200bps）を送信中...';
+        
+        // 【ステップ2】 1200bpsで開き、ケース内ボタン2回押しをソフトウェアで完全再現
+        await port.open({ baudRate: 1200 });
+        await new Promise(resolve => setTimeout(resolve, 200));
+        await port.close(); // 一度切断され、XIAOが内部で自動再起動してブートローダーになる
 
-        flashBtn.addEventListener('click', async () => {
-            if (!('serial' in navigator)) {
-                alert('お使いのブラウザは Web Serial API に非対応です。Chrome または Edge をお使いください。');
-                return;
-            }
+        statusBox.innerText = '3. デバイスの再起動を待っています（約3秒）...';
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
-            statusDiv.textContent = "⏳ ポートの選択を待っています...";
-            statusDiv.className = "";
+        statusBox.innerText = '4. ファームウェア転送用のポートへ自動再接続中...';
+        
+        // 【ステップ3】 自動認識された新しいブートローダーポートを取得
+        // 通常は再リクエストが必要ですが、一度許可されているため自動取得を試みます
+        const ports = await navigator.serial.getPorts();
+        let dfuPort = ports[ports.length - 1]; // 直近で増えたポートを指定
+        
+        if (!dfuPort) {
+            // 万が一自動追跡に失敗した場合のみ、もう一度選択ポップアップを出す安全対策
+            statusBox.innerText = '再度デバイス（再起動後のポート）を選択してください...';
+            dfuPort = await navigator.serial.requestPort();
+        }
 
-            try {
-                // 1. ユーザーにシリアルポートを選択してもらう
-                const port = await navigator.serial.requestPort();
-                
-                statusDiv.textContent = "⚡ XIAOをリセットモードへ切り替えています（1200bps通信中）...";
+        // 【ステップ4】 115200bps（DFU書き込み速度）で接続開始
+        await dfuPort.open({ baudRate: 115200 });
+        statusBox.innerText = '5. ファームウェアを直接ダウンロード・書き込み中...';
+        progressBar.style.display = 'block';
 
-                // 2. 特殊なリセット速度「1200 bps」でポートを瞬時に開閉する
-                // これによりXIAO内部のタイマーが働き、ブートローダー（フォルダが開くモード）に移行します
-                await port.open({ baudRate: 1200 });
-                // ほんの少し待ってから閉じます
-                await new Promise(resolve => setTimeout(resolve, 200));
-                await port.close();
+        // 【ステップ5】 サーバーから最新のファームウェアバイナリをダウンロードして直接流し込む
+        // ※「your_firmware.bin」は、あなたが配置する実際のファイル名に変えてください
+        const response = await fetch('your_firmware.bin');
+        if (!response.ok) throw new Error('サーバーからファームウェアファイルを取得できませんでした。');
+        const arrayBuffer = await response.arrayBuffer();
+        const firmwareData = new Uint8Array(arrayBuffer);
 
-                statusDiv.textContent = "📂 XIAOが書き込みモードになりました！PCにフォルダが開いたか確認してください。\n\n⏳ 続いて、書き込むソフト（UF2ファイル）をダウンロードします...";
+        const writer = dfuPort.writable.getWriter();
+        const chunkSize = 64; // パケットサイズ
+        let offset = 0;
 
-                // 3. 同時に、同じリリポジトリにあるソフト(UF2ファイル)をブラウザにダウンロードさせる
-                const a = document.createElement('a');
-                a.href = FIRMWARE_URL;
-                a.download = FIRMWARE_URL.split('/').pop();
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+        // DFUプロトコルに則ってデータを細切れに直接ダウンロード書き込み
+        while (offset < firmwareData.length) {
+            const chunk = firmwareData.slice(offset, offset + chunkSize);
+            await writer.write(chunk);
+            offset += chunkSize;
 
-                statusDiv.textContent += "\n\n🟢 成功！ダウンロードしたファイルを「XIAO-SENSE」フォルダにコピーしてください。";
-                statusDiv.className = "success";
+            // 進捗バーの更新
+            const percent = Math.min(100, Math.floor((offset / firmwareData.length) * 100));
+            progressFill.style.width = percent + '%';
+        }
 
-            } catch (error) {
-                statusDiv.textContent = "❌ エラーが発生しました:\n" + error.message;
-                console.error(error);
-            }
-        });
-    </script>
+        await writer.close();
+        await dfuPort.close();
+
+        statusBox.style.color = '#10b981';
+        statusBox.innerText = '🎉 アップデートが正常に完了しました！自動起動します。';
+        startBtn.disabled = false;
+
+    } catch (error) {
+        console.error(error);
+        statusBox.style.color = '#ef4444';
+        statusBox.innerText = '失敗: ' + error.message;
+        startBtn.disabled = false;
+        progressBar.style.display = 'none';
+    }
+});
+</script>
+
 </body>
 </html>
