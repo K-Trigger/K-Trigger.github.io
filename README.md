@@ -1,1 +1,0 @@
-# K-Trigger.github.io
