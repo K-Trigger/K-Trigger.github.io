@@ -3,35 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 1クリック完全自動アップデート</title>
+    <title>XIAO nRF52840 2ステップ自動アップデート</title>
     <style>
         body { font-family: sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
         .card { background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; }
-        button { background: #007bc0; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; }
-        button:hover { background: #005a9c; }
+        button { color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 15px; }
+        .btn-reset { background: #e67e22; }
+        .btn-reset:hover { background: #d35400; }
+        .btn-flash { background: #2ecc71; }
+        .btn-flash:hover { background: #27ae60; }
         button:disabled { background: #bdc3c7; cursor: not-allowed; }
         #status { margin-top: 20px; color: #333; font-size: 14px; line-height: 1.6; white-space: pre-wrap; text-align: left; background: #eee; padding: 10px; border-radius: 4px; }
     </style>
     
-    <!-- ★外部CDNではなく、同じフォルダに置いたJSZipを読み込みます -->
-    <script src="./jszip.min.js"></script>
+    <!-- JSZipライブラリの読み込み -->
+    <script src="https://unpkg.com"></script>
     
-    <!-- nrf_web_tools.js を読み込み -->
+    <!-- ダウンロードした nrf_web_tools.js -->
     <script src="./nrf_web_tools.js"></script>
 </head>
 <body>
 
 <div class="card">
-    <h2>XIAO nRF52840<br>1クリック更新　5</h2>
-    <p>USBで接続した状態で、下のボタンを1回だけ押してください。</p>
+    <!-- ★ご指定通り、更新の後に連番「6」を追加しました -->
+    <h2>XIAO nRF52840<br>プログラム更新(6)</h2>
+    <p>本体のリセットボタンは触りません。画面の指示に従って①、②のボタンを順番に押してください。</p>
     
-    <button id="update-btn">アップデートを開始</button>
+    <!-- ステップ1: DFUモードへ切り替えるボタン -->
+    <button id="reset-btn" class="btn-reset">① XIAOを書き込みモードにする</button>
     
-    <div id="status">準備完了。ボタンを押して、接続されているXIAOを選択してください。</div>
+    <!-- ステップ2: 実際に書き込むボタン -->
+    <button id="flash-btn" class="btn-flash" disabled>② 接続して書き込む</button>
+    
+    <div id="status">準備完了。①のボタンを押して、接続されているXIAOを選択してください。</div>
 </div>
 
 <script>
-    const updateBtn = document.getElementById('update-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const flashBtn = document.getElementById('flash-btn');
     const statusDiv = document.getElementById('status');
     const firmwarePath = './HIKIGANE_V3.1_RT.zip'; 
 
@@ -39,75 +48,42 @@
         statusDiv.innerText = msg;
     }
 
-    updateBtn.addEventListener('click', async () => {
-        // 同じフォルダのJSZipが認識できているかチェック
-        if (!window.JSZip) {
-            log("❌ エラー: jszip.min.js の読み込みに失敗しています。同じフォルダに jszip.min.js ファイルが正しく配置されているか確認してください。");
-            return;
-        }
-
-        updateBtn.disabled = true;
-        log("1. XIAO（シリアルポート）を選択してください...");
-
+    // --- ステップ1: 1200bpsタッチでDFUモードへ移行させる ---
+    resetBtn.addEventListener('click', async () => {
         try {
-            // 1回目のポップアップ
-            const firstPort = await navigator.serial.requestPort();
-            const firstInfo = firstPort.getInfo();
+            log("接続するXIAO（シリアルポート）を選んでください...");
+            const port = await navigator.serial.requestPort();
 
-            log("🔄 2. 書き込みモード（DFU）への切り替え命令を送信中...");
-            await firstPort.open({ baudRate: 1200 });
-            await firstPort.close();
+            log("🔄 DFUモード（書き込みモード）への切り替え命令を送信中...");
+            await port.open({ baudRate: 1200 });
+            await port.close();
 
-            log("⏳ 3. XIAOの再起動を待っています...（約4秒）\n画面には触らずそのままでお待ちください。");
-            await new Promise(resolve => setTimeout(resolve, 4000));
+            log("⏳ XIAOが再起動しています... 4秒ほどお待ちください。");
+            resetBtn.disabled = true;
 
-            log("🔍 4. 再起動したXIAOを自動検出中...");
-            const ports = await navigator.serial.getPorts();
-            let dfuPort = null;
-
-            for (const port of ports) {
-                const info = port.getInfo();
-                if (info.usbVendorId === firstInfo.usbVendorId) {
-                    dfuPort = port;
-                    break;
-                }
-            }
-
-            if (!dfuPort) {
-                log("⚠️ 自動検出に失敗しました。お手数ですが、もう一度だけデバイスを選択してください。");
-                dfuPort = await navigator.serial.requestPort();
-            }
-
-            log("⚡ 5. ファームウェアの書き込みを開始します...");
-
-            const hiddenBtn = document.createElement('button');
-            const nrfTool = new NrfWebTools(hiddenBtn, firmwarePath);
-
-            if (nrfTool.dfu && typeof nrfTool.dfu.program === 'function') {
-                const response = await fetch(firmwarePath);
-                if (!response.ok) throw new Error(`${firmwarePath} が見つかりません。GitHubにファイルがあるか確認してください。`);
-                const arrayBuffer = await response.arrayBuffer();
-
-                log("💾 書き込み中... 完了するまでブラウザを閉じないでください。");
-                
-                nrfTool.dfu.onProgress = (progress) => {
-                    log(`💾 書き込み中: ${progress}%`);
-                };
-
-                await nrfTool.dfu.program(dfuPort, arrayBuffer);
-            } else {
-                log("最終書き込みを実行します...");
-                hiddenBtn.click();
-            }
-
-            log("🎉 アップデートが正常に完了しました！自動でアプリが起動します。");
+            setTimeout(() => {
+                log("準備完了！\n②のボタンを押して、もう一度デバイスを選択してください。");
+                flashBtn.disabled = false;
+            }, 4000);
 
         } catch (error) {
-            log(`❌ エラーが発生しました: ${error.message}\nもう一度最初からやり直してください。`);
+            log(`❌ エラー: ${error.message}`);
             console.error(error);
-        } finally {
-            updateBtn.disabled = false;
+            resetBtn.disabled = false;
         }
+    });
+
+    // --- ステップ2: nrf_web_toolsを使った書き込み処理 ---
+    document.addEventListener('DOMContentLoaded', () => {
+        try {
+            new NrfWebTools(flashBtn, firmwarePath);
+        } catch (error) {
+            console.error("ライブラリ初期化エラー:", error);
+        }
+    });
+
+    flashBtn.addEventListener('click', () => {
+        log("💾 書き込みを開始します。デバイスを選択すると、進行状況がパーセントで表示されます...");
     });
 </script>
 
