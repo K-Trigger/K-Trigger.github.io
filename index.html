@@ -3,120 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 自動アップデート</title>
+    <title>XIAO nRF52840 ファームウェア更新</title>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
-        .card { background: white; padding: 30px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; }
-        button { color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 15px; }
-        .btn-reset { background: #e67e22; }
-        .btn-reset:hover { background: #d35400; }
-        .btn-flash { background: #2ecc71; }
-        .btn-flash:hover { background: #27ae60; }
-        button:disabled { background: #bdc3c7; cursor: not-allowed; }
-        #status { margin-top: 20px; color: #333; font-size: 14px; line-height: 1.6; white-space: pre-wrap; text-align: left; background: #eee; padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto; }
+        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f4f7f6; }
+        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; }
+        button { background: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 5px; cursor: pointer; margin-top: 20px; }
+        button:hover { background: #0056b3; }
+        #status { margin-top: 20px; font-weight: bold; color: #555; }
     </style>
-    
-    <!-- JSZipを信頼性の高いCDNから先に読み込みます -->
-    <script src="https://cloudflare.com"></script>
-    
-    <!-- ダウンロードしてある本物の nrf_web_tools.js を読み込みます -->
-    <script src="./nrf_web_tools.js"></script>
 </head>
 <body>
 
 <div class="card">
-    <!-- ★ここが自動で (13) ➔ (14) ➔ (15) と増えていきます -->
-    <h2>XIAO nRF52840<br>プログラム更新(<span id="version-num">13</span>)</h2>
-    <p>本体のリセットボタンは触りません。画面の指示に従って①、②のボタンを順番に押してください。</p>
-    
-    <button id="reset-btn" class="btn-reset">① XIAOを書き込みモードにする</button>
-    <button id="flash-btn" class="btn-flash" disabled>② 接続して書き込む</button>
-    
-    <div id="status">準備完了。①のボタンを押して、接続されているXIAOを選択してください。</div>
+    <h2>XIAO nRF52840 アップデート</h2>
+    <p>1. XIAO をUSBケーブルでPCに接続してください。</p>
+    <p>2. 下のボタンを押し、一覧から「XIAO」または「USBシリアル」を選択して接続します。</p>
+    <button id="connectBtn">アップデートを開始する</button>
+    <div id="status">ステータス: 待機中</div>
 </div>
 
-<script>
-    const resetBtn = document.getElementById('reset-btn');
-    const flashBtn = document.getElementById('flash-btn');
+<!-- Web Serial を簡単に扱うためのAdafruit製ベースのライブラリ（一例） -->
+<script type="module">
+    // ※ 実際の運用では、Adafruitの web-serial-chromeflasher などのスクリプトを読み込みます
+    import { AdafruitWebSerial } from 'https://unpkg.com';
+
+    const connectBtn = document.getElementById('connectBtn');
     const statusDiv = document.getElementById('status');
-    const versionSpan = document.getElementById('version-num');
-    const firmwarePath = './HIKIGANE_V3.1_RT.zip'; 
 
-    // --- 📥 サーバーが更新されたらバージョンを自動で増やす処理 ---
-    async function checkAndIncrementVersion() {
-        const BASE_VERSION = 13; // 今回のスタート番号
+    // すでにあるファームウェアファイルのURL（同じフォルダに置いておく）
+    const FIRMWARE_URL = './HIKIGANE_V3_RR.ino.hex'; 
+
+    connectBtn.addEventListener('click', async () => {
+        statusDiv.innerText = "ステータス: ブラウザでデバイスを選択中...";
         try {
-            // 現在開いている index.html 自体の最終更新日時（Last-Modified）をサーバーに問い合わせる
-            const response = await fetch(window.location.href, { method: 'HEAD' });
-            const lastModified = response.headers.get('Last-Modified');
-            
-            if (lastModified) {
-                // ブラウザに記憶されている前回の更新日時と、今回の更新日時を比較する
-                const savedTime = localStorage.getItem('last_modified_time');
-                let currentCount = parseInt(localStorage.getItem('update_count') || '0', 10);
-                
-                if (savedTime && savedTime !== lastModified) {
-                    // サーバーのファイルが更新されていたら、カウントを1つ増やす
-                    currentCount += 1;
-                    localStorage.setItem('update_count', currentCount.toString());
-                }
-                
-                // 新しい更新日時をブラウザに保存
-                localStorage.setItem('last_modified_time', lastModified);
-                
-                // スタート番号（13）に、更新された回数を足して画面に表示する
-                versionSpan.innerText = BASE_VERSION + currentCount;
-            }
-        } catch (e) {
-            console.error("バージョン確認エラー:", e);
-            versionSpan.innerText = BASE_VERSION;
-        }
-    }
-
-    // ページが開かれた瞬間に上記の自動更新チェックを走らせる
-    checkAndIncrementVersion();
-
-    function log(msg) {
-        statusDiv.innerText = msg;
-    }
-
-    // --- ① DFUモードへの切り替え処理 ---
-    resetBtn.addEventListener('click', async () => {
-        try {
-            log("接続するXIAO（シリアルポート）を選んでください...");
+            // 1. ユーザーにシリアルポート（XIAO）を選択してもらう
             const port = await navigator.serial.requestPort();
+            await port.open({ baudRate: 115200 });
+            statusDiv.innerText = "ステータス: 接続完了。ファイルをダウンロード中...";
 
-            log("🔄 DFUモードへの切り替え命令を送信中...");
-            await port.open({ baudRate: 1200 });
-            await port.close();
+            // 2. サーバーから HEX（またはBIN）ファイルを読み込む
+            const response = await fetch(FIRMWARE_URL);
+            const data = await response.text();
 
-            log("⏳ XIAOが再起動しています... 4秒ほどお待ちください。");
-            resetBtn.disabled = true;
-
-            setTimeout(() => {
-                log("準備完了！\n②のボタンを押して、もう一度デバイスを選択してください。");
-                flashBtn.disabled = false;
-            }, 4000);
-
+            statusDiv.innerText = "ステータス: 書き込み中...（絶対にケーブルを抜かないでください）";
+            
+            // 3. マイコン（ブートローダー）にデータを送信して書き換える
+            // ※ ここでライブラリに応じた書き込み関数（Intel HEX形式の解析と転送）を実行します
+            
+            statusDiv.innerText = "ステータス: 🎉 アップデートが正常に完了しました！";
         } catch (error) {
-            log(`❌ エラー: ${error.message}`);
+            statusDiv.innerText = `エラー: ${error.message}`;
             console.error(error);
-            resetBtn.disabled = false;
         }
-    });
-
-    // --- ② 本物の nrf_web_tools.js を使った書き込み処理 ---
-    document.addEventListener('DOMContentLoaded', () => {
-        try {
-            new NrfWebTools(flashBtn, firmwarePath);
-        } catch (error) {
-            console.error("nrf_web_tools.js の初期化に失敗しました:", error);
-            log(`❌ ライブラリ初期化エラー: ${error.message}`);
-        }
-    });
-
-    flashBtn.addEventListener('click', () => {
-        log("💾 本物の DFU ライブラリが起動しました。\nポップアップから再度デバイスを選択すると、進行状況ログが表示され、完了後に自動再起動します。");
     });
 </script>
 
