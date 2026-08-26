@@ -1,4 +1,4 @@
-html<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
@@ -19,7 +19,8 @@ html<!DOCTYPE html>
 <body>
 
 <div class="card">
-    <h2>XIAO nRF52840<br>プログラム更新(<span id="version-num">9</span>)</h2>
+    <!-- ★初期値を「10」に設定しました -->
+    <h2>XIAO nRF52840<br>プログラム更新(<span id="version-num">10</span>)</h2>
     <p>本体のリセットボタンは触りません。画面の指示に従って①、②のボタンを順番に押してください。</p>
     
     <button id="reset-btn" class="btn-reset">① XIAOを書き込みモードにする</button>
@@ -29,19 +30,18 @@ html<!DOCTYPE html>
 </div>
 
 <script>
-    // JSZipとnrf_web_toolsのコア機能を1つのスマートなスクリプトにまとめました
     const resetBtn = document.getElementById('reset-btn');
     const flashBtn = document.getElementById('flash-btn');
     const statusDiv = document.getElementById('status');
     const versionSpan = document.getElementById('version-num');
     const firmwarePath = './HIKIGANE_V3.1_RT.zip'; 
 
-    // 連番の記憶と復元（最初は9からスタート）
+    // 連番の記憶と復元（新しくページを開いたときは10からスタート）
     const savedVersion = localStorage.getItem('hikigane_version');
     if (savedVersion) {
         versionSpan.innerText = savedVersion;
     } else {
-        localStorage.setItem('hikigane_version', '9');
+        localStorage.setItem('hikigane_version', '10');
     }
 
     function log(msg) {
@@ -89,7 +89,6 @@ html<!DOCTYPE html>
             
             log("💾 ファームウェアデータを解析中...");
             
-            // 自前でバイナリデータを読み込むための簡易展開処理
             const view = new DataView(arrayBuffer);
             if (view.getUint32(0, true) !== 0x04034b50) { 
                 throw new Error("正しいZIP（DFU）ファイルではありません。");
@@ -99,7 +98,6 @@ html<!DOCTYPE html>
             const writer = port.writable.getWriter();
             const uint8Array = new Uint8Array(arrayBuffer);
 
-            // データを細かく分割して転送
             let progress = 0;
             const chunkSize = 64;
             
@@ -118,7 +116,7 @@ html<!DOCTYPE html>
             writer.releaseLock();
             await port.close();
 
-            // アップデートが成功したら、番号を自動で+1する
+            // アップデートが成功したら、番号を自動で+1する (10 ➔ 11)
             let currentNum = parseInt(versionSpan.innerText, 10);
             let nextNum = currentNum + 1;
             versionSpan.innerText = nextNum;
