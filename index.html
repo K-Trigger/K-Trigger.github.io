@@ -89,7 +89,7 @@ startBtn.addEventListener('click', async () => {
 
         // 【ステップ5】 サーバーから最新のファームウェアバイナリをダウンロードして直接流し込む
         // ※「your_firmware.bin」は、あなたが配置する実際のファイル名に変えてください
-        const response = await fetch('your_firmware.bin');
+        const response = await fetch('HIKIGANE_V3.1_RT.bin');
         if (!response.ok) throw new Error('サーバーからファームウェアファイルを取得できませんでした。');
         const arrayBuffer = await response.arrayBuffer();
         const firmwareData = new Uint8Array(arrayBuffer);
