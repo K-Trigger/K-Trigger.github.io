@@ -12,15 +12,17 @@
         button:disabled { background: #bdc3c7; cursor: not-allowed; }
         #status { margin-top: 20px; color: #333; font-size: 14px; line-height: 1.6; white-space: pre-wrap; text-align: left; background: #eee; padding: 10px; border-radius: 4px; }
     </style>
-    <!-- JSZipの読み込み -->
+    
+    <!-- JSZipを一番最初に読み込み -->
     <script src="https://cloudflare.com"></script>
-    <!-- ダウンロードした nrf_web_tools.js -->
+    
+    <!-- nrf_web_tools.js を読み込み -->
     <script src="./nrf_web_tools.js"></script>
 </head>
 <body>
 
 <div class="card">
-    <h2>XIAO nRF52840<br>1クリック更新 3</h2>
+    <h2>XIAO nRF52840<br>1クリック更新　4</h2>
     <p>USBで接続した状態で、下のボタンを1回だけ押してください。</p>
     
     <button id="update-btn">アップデートを開始</button>
@@ -31,6 +33,8 @@
 <script>
     const updateBtn = document.getElementById('update-btn');
     const statusDiv = document.getElementById('status');
+    
+    // ★指定されたファイル名に変更しました
     const firmwarePath = './HIKIGANE_V3.1_RT.zip'; 
 
     function log(msg) {
@@ -38,11 +42,16 @@
     }
 
     updateBtn.addEventListener('click', async () => {
+        if (!window.JSZip) {
+            log("❌ エラー: JSZipライブラリの読み込みに失敗しています。ネット接続を確認するか、数秒待ってからやり直してください。");
+            return;
+        }
+
         updateBtn.disabled = true;
         log("1. XIAO（シリアルポート）を選択してください...");
 
         try {
-            // 【1回目】ユーザーのクリック直後なので、安全にポップアップが開きます
+            // 1回目のポップアップ
             const firstPort = await navigator.serial.requestPort();
             const firstInfo = firstPort.getInfo();
 
@@ -58,11 +67,11 @@
 
             log("🔍 4. 再起動したXIAOを自動検出中...");
             
-            // ★ここがポイント：過去にアクセス許可されたポートをすべて取得する
+            // 過去にアクセス許可されたポートをすべて取得
             const ports = await navigator.serial.getPorts();
             let dfuPort = null;
 
-            // 同じUSBベンダーID（XIAOのチップ）を持つポートを自動で探す
+            // 同じUSBベンダーIDを持つポートを自動で探す
             for (const port of ports) {
                 const info = port.getInfo();
                 if (info.usbVendorId === firstInfo.usbVendorId) {
@@ -71,7 +80,7 @@
                 }
             }
 
-            // もし自動で見つからなかった場合のみ、例外的にバックアップとして再度選択させる
+            // 自動で見つからなかった場合のバックアップ
             if (!dfuPort) {
                 log("⚠️ 自動検出に失敗しました。お手数ですが、もう一度だけデバイスを選択してください。");
                 dfuPort = await navigator.serial.requestPort();
@@ -83,24 +92,20 @@
             const hiddenBtn = document.createElement('button');
             const nrfTool = new NrfWebTools(hiddenBtn, firmwarePath);
 
-            // ライブラリの内部処理をハックし、ポップアップ（requestPort）をスキップして
-            // 今自動で見つけた「dfuPort」をそのまま使って書き込みを強制開始させる
+            // ライブラリの内部処理を使用し、2回目のポップアップをスキップして書き込み
             if (nrfTool.dfu && typeof nrfTool.dfu.program === 'function') {
-                // ZIPファイルを先読み
                 const response = await fetch(firmwarePath);
+                if (!response.ok) throw new Error(`${firmwarePath} が見つかりません。GitHubにファイルがあるか確認してください。`);
                 const arrayBuffer = await response.arrayBuffer();
 
                 log("💾 書き込み中... 完了するまでブラウザを閉じないでください。");
                 
-                // 進捗を表示
                 nrfTool.dfu.onProgress = (progress) => {
                     log(`💾 書き込み中: ${progress}%`);
                 };
 
-                // 直接書き込みを実行
                 await nrfTool.dfu.program(dfuPort, arrayBuffer);
             } else {
-                // 万が一内部構造が違った場合は、ライブラリ本来のボタン擬似クリックへフォールバック
                 log("最終書き込みを実行します...");
                 hiddenBtn.click();
             }
