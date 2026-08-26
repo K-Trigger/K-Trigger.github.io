@@ -5,55 +5,98 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XIAO nRF52840 ファームウェア更新</title>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f4f7f6; }
-        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; }
-        button { background: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 5px; cursor: pointer; margin-top: 20px; }
+        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f4f7f6; color: #333; }
+        .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: inline-block; max-width: 500px; width: 100%; text-align: left; }
+        h2 { text-align: center; margin-top: 0; color: #007bff; }
+        ol { padding-left: 20px; line-height: 1.6; }
+        button { display: block; width: 100%; background: #007bff; color: white; border: none; padding: 14px; font-size: 16px; border-radius: 6px; cursor: pointer; margin-top: 25px; font-weight: bold; transition: background 0.2s; }
         button:hover { background: #0056b3; }
-        #status { margin-top: 20px; font-weight: bold; color: #555; }
+        button:disabled { background: #cccccc; cursor: not-allowed; }
+        #status { margin-top: 20px; padding: 12px; background: #e9ecef; border-radius: 6px; font-family: monospace; font-size: 14px; white-space: pre-wrap; word-break: break-all; min-height: 40px; }
     </style>
 </head>
 <body>
 
 <div class="card">
     <h2>XIAO nRF52840 アップデート</h2>
-    <p>1. XIAO をUSBケーブルでPCに接続してください。</p>
-    <p>2. 下のボタンを押し、一覧から「XIAO」または「USBシリアル」を選択して接続します。</p>
-    <button id="connectBtn">アップデートを開始する</button>
+    <ol>
+        <li>XIAOをUSBケーブルでPCに接続します。</li>
+        <li>XIAOの「リセットボタン」を<b>素早く2回連続</b>でカチカチと押します（本体のLEDがゆっくり点滅を始め、PCに<b>「XIAO」というUSBメモリのようなドライブ</b>が出現すればDFUモード成功です）。</li>
+        <li>下のボタンを押し、ポップアップから対象のCOMポートを選択してください。</li>
+    </ol>
+    
+    <button id="connectBtn">デバイスを選択して書き込み開始</button>
     <div id="status">ステータス: 待機中</div>
 </div>
 
-<!-- Web Serial を簡単に扱うためのAdafruit製ベースのライブラリ（一例） -->
-<script type="module">
-    // ※ 実際の運用では、Adafruitの web-serial-chromeflasher などのスクリプトを読み込みます
-    import { AdafruitWebSerial } from 'https://unpkg.com';
-
+<script>
     const connectBtn = document.getElementById('connectBtn');
     const statusDiv = document.getElementById('status');
 
-    // すでにあるファームウェアファイルのURL（同じフォルダに置いておく）
-    const FIRMWARE_URL = './HIKIGANE_V3_RR.ino.hex'; 
+    // ★ここにArduino IDEが出力したHEXファイルの名前を正確に指定してください
+    // ※今回は例として「HIKIGANE_V3_RR.ino.hex」にしています。同じフォルダに置いてください。
+    const HEX_FILE_NAME = './HIKIGANE_V3_RR.ino.hex';
+
+    // ログ出力用関数
+    function log(message) {
+        statusDiv.innerText = "ステータス:\n" + message;
+        console.log(message);
+    }
+
+    // ブラウザがWeb Serialをサポートしているかチェック
+    if (!navigator.serial) {
+        connectBtn.disabled = true;
+        log("❌ お使いのブラウザはWeb Serialに対応していません。Google ChromeまたはMicrosoft Edgeを使用し、https:// でアクセスしてください。");
+    }
 
     connectBtn.addEventListener('click', async () => {
-        statusDiv.innerText = "ステータス: ブラウザでデバイスを選択中...";
+        let port;
         try {
-            // 1. ユーザーにシリアルポート（XIAO）を選択してもらう
-            const port = await navigator.serial.requestPort();
-            await port.open({ baudRate: 115200 });
-            statusDiv.innerText = "ステータス: 接続完了。ファイルをダウンロード中...";
-
-            // 2. サーバーから HEX（またはBIN）ファイルを読み込む
-            const response = await fetch(FIRMWARE_URL);
-            const data = await response.text();
-
-            statusDiv.innerText = "ステータス: 書き込み中...（絶対にケーブルを抜かないでください）";
+            log("1. サーバからHEXファイルを取得中...");
+            const response = await fetch(HEX_FILE_NAME);
+            if (!response.ok) throw new Error("HEXファイルが見つかりません。ファイル名が正しいか、同じフォルダにあるか確認してください。");
+            const hexText = await response.text();
             
-            // 3. マイコン（ブートローダー）にデータを送信して書き換える
-            // ※ ここでライブラリに応じた書き込み関数（Intel HEX形式の解析と転送）を実行します
+            log("2. ブラウザの接続ポップアップをお待ちください...");
+            port = await navigator.serial.requestPort();
             
-            statusDiv.innerText = "ステータス: 🎉 アップデートが正常に完了しました！";
+            // nRF52のブートローダーと通信するための一般的な設定 (115200bps)
+            await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: "none", flowControl: "none" });
+            log("3. XIAOに接続しました。データを転送中...");
+
+            const writer = port.writable.getWriter();
+            const encoder = new TextEncoder();
+            
+            // HEXファイルを1行ずつ解析しながら送信
+            const lines = hexText.split(/\r?\n/);
+            let lineCount = 0;
+
+            for (let line of lines) {
+                line = line.trim();
+                if (line.length === 0) continue;
+
+                // シリアルポートに1行ずつ送信（最後に改行コードを付与）
+                const data = encoder.encode(line + "\r\n");
+                await writer.write(data);
+                
+                lineCount++;
+                if (lineCount % 50 === 0) {
+                    log(`転送中... (${lineCount} / ${lines.length} 行完了)`);
+                }
+                
+                // マイコン側の処理を待つためのごくわずかなウェイト（ミリ秒）
+                await new Promise(resolve => setTimeout(resolve, 5));
+            }
+
+            writer.releaseLock();
+            log("🎉 転送完了！マイコンが自動的に再起動します。USBケーブルを抜いて大丈夫です。");
+
         } catch (error) {
-            statusDiv.innerText = `エラー: ${error.message}`;
-            console.error(error);
+            log(`❌ エラーが発生しました:\n${error.message}`);
+        } finally {
+            if (port) {
+                try { await port.close(); } catch(e) {}
+            }
         }
     });
 </script>
