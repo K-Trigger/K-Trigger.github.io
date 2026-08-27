@@ -20,7 +20,7 @@
 
     <div class="card">
         <h1>HIKIGANE V3.1 RT</h1>
-        <p>Connect K-Trigger2/Go TriggerUnit and click the button below.</p>
+        <p>Connect TriggerUnit and click the button below.</p>
 
         <!-- Trigger button for Web Serial DFU -->
         <button id="install-btn">Flash Firmware</button>
@@ -60,7 +60,7 @@
                     './HIKIGANEV3.1_RT.zip?v=' + Date.now()
                 );
                 
-                statusArea.innerText = "Ready: Click the button to select your serial port.";
+                statusArea.innerText = "Ready: Click the button to select your serial port.\nTinyUSB Serial (COMxxx) or nRF Serial (COMxxx)";
                 statusArea.style.backgroundColor = "#e6f4ea";
             } catch (err) {
                 statusArea.innerText = `[System Error]\n${err.message}`;
