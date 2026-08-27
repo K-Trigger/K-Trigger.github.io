@@ -3,43 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 Web USB Updater</title>
+    <title>XIAO nRF52840 Web Uploader (Arduino IDE Mode)</title>
+    
+    <!-- 💡 Arduino IDEと同じ書き込み処理(nrfutil)をブラウザで動かすための外部ライブラリ群 -->
+    <script src="https://cloudflare.com"></script>
+    <script src="https://jsdelivr.net"></script>
+    
     <style>
-        body { font-family: -apple-system, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
         h1 { color: #0066cc; border-bottom: 2px solid #eee; padding-bottom: 10px; }
         .card { background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-top: 20px; }
-        .step { margin-bottom: 25px; padding: 15px; background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; }
-        button { background-color: #0066cc; color: white; border: none; padding: 12px 24px; font-size: 15px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 10px; }
+        button { background-color: #0066cc; color: white; border: none; padding: 12px 24px; font-size: 15px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 15px; }
         button:hover { background-color: #0052a3; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #status { font-weight: bold; padding: 12px; border-radius: 4px; background: #eef; margin-top: 15px; border-left: 5px solid #0066cc; }
+        #status { font-weight: bold; padding: 12px; border-radius: 4px; background: #eef; margin-top: 15px; border-left: 5px solid #0066cc; white-space: pre-wrap; }
         .progress-container { width: 100%; background-color: #e0e0e0; border-radius: 4px; margin-top: 15px; display: none; }
-        .progress-bar { width: 0%; height: 20px; background-color: #4caf50; border-radius: 4px; text-align: center; line-height: 20px; color: white; font-size: 12px; }
+        .progress-bar { width: 0%; height: 20px; background-color: #28a745; border-radius: 4px; text-align: center; line-height: 20px; color: white; font-size: 12px; }
+        .download-box { margin-bottom: 20px; background: #e8f4fd; padding: 15px; border-radius: 6px; border: 1px solid #b8daff; }
     </style>
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web USB Updater 03</h1>
-    <p>UF2ファイルをWebUSB経由で直接フラッシュに書き込み、自動起動させます。</p>
+    <h1>XIAO nRF52840 Web Flash Tool</h1>
+    <p>Arduino IDEと同等の仕組みを使用し、USB経由で直接ファームウェアを更新・自動起動します。</p>
 
     <div class="card">
-        <div class="step">
-            <strong>📁 [準備] ファームウェアファイルの選択</strong><br><br>
-            <input type="file" id="uf2File" accept=".uf2">
+        <!-- 1. ZIPファイルをネットからダウンロード、またはローカル選択 -->
+        <div class="download-box">
+            <strong>📁 アップデート用 ZIP パッケージの準備</strong><br><br>
+            <!-- ボタン一つで最新のファイルをネットからDLする想定（URLはご自身のものに変更可能） -->
+            <button id="downloadBtn" style="background-color: #28a745; margin-top:0;">🌐 ネットから最新のZIPを読み込む</button>
+            <p style="text-align: center; margin: 5px 0; font-size: 13px; color:#666;">または手動でファイルを選択</p>
+            <input type="file" id="zipFileInput" accept=".zip">
         </div>
 
-        <div class="step">
-            <strong>1️⃣ [ステップ 1] XIAOをリセットする (Web Serial)</strong>
-            <button id="resetBtn">XIAOを選択してリセット</button>
-        </div>
+        <!-- 2. 連動して書き込みを行うメインボタン -->
+        <strong>⚡ ファームウェアの書き込み</strong>
+        <button id="flashBtn" disabled>XIAOに接続して書き込む</button>
 
-        <div class="step">
-            <strong>2️⃣ [ステップ 2] UF2ファイルを書き込む (WebUSB)</strong>
-            <p style="font-size:13px; margin:5px 0; color:#666;">ほたる点滅に変わったら押してください。接続画面では「XIAO nRF52840」または「nRF52840 DFU」等を選択します。</p>
-            <button id="writeBtn" disabled>ブートローダーにWebUSB接続して書き込み</button>
-        </div>
-
-        <div id="status">ステータス: UF2ファイルを選択してください。</div>
+        <!-- 状態と進捗状況 -->
+        <div id="status">ステータス: ZIPファイルを準備してください。</div>
         
         <div class="progress-container" id="progressContainer">
             <div class="progress-bar" id="progressBar">0%</div>
@@ -47,101 +50,98 @@
     </div>
 
     <script>
-        const resetBtn = document.getElementById('resetBtn');
-        const writeBtn = document.getElementById('writeBtn');
-        const fileInput = document.getElementById('uf2File');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const zipFileInput = document.getElementById('zipFileInput');
+        const flashBtn = document.getElementById('flashBtn');
         const statusDiv = document.getElementById('status');
         const progressContainer = document.getElementById('progressContainer');
         const progressBar = document.getElementById('progressBar');
 
-        let uf2Data = null;
+        let zipDataBuffer = null; // 読み込んだZIPデータの格納用
 
-        fileInput.addEventListener('change', async () => {
-            if (fileInput.files.length > 0) {
-                const file = fileInput.files[0];
-                const arrayBuffer = await file.arrayBuffer();
-                uf2Data = new Uint8Array(arrayBuffer);
-                statusDiv.innerText = "👍 ファイル読み込み完了。[ステップ 1] を押してください。";
+        // 🌐 A. サーバからZIPを直接ダウンロードして読み込む処理
+        downloadBtn.addEventListener('click', async () => {
+            statusDiv.innerText = "最新のファームウェアをダウンロード中...";
+            try {
+                // ご自身のGitHub Releasesやサーバにある「dfu_package.zip」のURLを指定してください
+                const targetUrl = "https://githubusercontent.com";
+                
+                const response = await fetch(targetUrl);
+                if (!response.ok) throw new Error("ダウンロードに失敗しました。");
+                
+                const arrayBuffer = await response.arrayBuffer();
+                zipDataBuffer = new Uint8Array(arrayBuffer);
+                
+                statusDiv.innerText = "✨ 最新のZIPファームウェアのダウンロードに成功しました！\n「XIAOに接続して書き込む」を押してください。";
+                flashBtn.disabled = false;
+            } catch (err) {
+                statusDiv.innerText = `❌ ダウンロードエラー: ${err.message}\n(下の手動ファイル選択を試してください)`;
             }
         });
 
-        // STEP 1: 1200bpsリセット (これはWeb Serialで行うのが最も確実)
-        resetBtn.addEventListener('click', async () => {
-            if (!uf2Data) return alert("先にUF2ファイルを選択してください。");
+        // 📂 B. パソコン内から手動でZIPファイルを選択した時の処理
+        zipFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            statusDiv.innerText = "ローカルZIPファイルを読み込み中...";
+            const arrayBuffer = await file.arrayBuffer();
+            zipDataBuffer = new Uint8Array(arrayBuffer);
+            statusDiv.innerText = "👍 ファイル読み込み完了。\n「XIAOに接続して書き込む」を押してください。";
+            flashBtn.disabled = false;
+        });
+
+        // ⚡ C. Arduino IDEと全く同じ手順の書き込みメイン処理 (Web Serial)
+        flashBtn.addEventListener('click', async () => {
+            if (!zipDataBuffer) return;
+            
             try {
+                flashBtn.disabled = true;
+                statusDiv.innerText = "通常ポート（動いているXIAO）の選択を待っています...";
+                
+                // 1️⃣ 最初のポート選択
                 const port = await navigator.serial.requestPort();
+                
+                // 2️⃣ Arduino IDE流「1200bpsリセットタッチ」を実行
+                statusDiv.innerText = "XIAOにリセット信号(1200bps)を送信して再起動させています...";
                 await port.open({ baudRate: 1200 });
-                await port.close(); 
-                statusDiv.innerText = "⏳ リセット成功。ほたる点滅に変わったら [ステップ 2] を押してください。";
-                writeBtn.disabled = false;
-                resetBtn.disabled = true;
-            } catch (error) {
-                statusDiv.innerText = `❌ リセットエラー: ${error.message}`;
-            }
-        });
-
-        // STEP 2: WebUSBを用いたUF2のダイレクトバルク転送
-        writeBtn.addEventListener('click', async () => {
-            if (!uf2Data) return;
-            let device;
-
-            try {
-                statusDiv.innerText = "WebUSBデバイスの選択を待っています...";
-                // Adafruit / Seeed のブートローダー(MSC/UF2)のクラスにアクセス
-                device = await navigator.usb.requestDevice({ filters: [] }); 
+                await port.close(); // 一瞬で閉じる
                 
-                statusDiv.innerText = "デバイスを開いています...";
-                await device.open();
-                
-                // 構成とインターフェースの有効化 (UF2/MSC用バルクエンドポイントの取得)
-                await device.selectConfiguration(1);
-                
-                // ブートローダーのインターフェース(通常はMSC用のインターフェース番号)を探してクレーム
-                let interfaceNum = 0; 
-                // 環境によって異なる場合があるため、自動で見つからない場合は手動でインターフェース番号を設定
-                await device.claimInterface(interfaceNum);
-
-                statusDiv.innerText = "フラッシュメモリへUF2データを書き込み中...";
+                // 3️⃣ ブートローダー(DFU)がWindowsで認識されるまで待機
+                statusDiv.innerText = "⏳ 5秒間、XIAOがDFUモード（ほたる点滅）で立ち上がるのを待ちます...";
                 progressContainer.style.display = 'block';
-
-                const chunkSize = 512;
-                const totalChunks = uf2Data.length / chunkSize;
-
-                // TinyUF2は特定のエンドポイント(通常はOUTエンドポイント 1 または 2)へ512バイトのセクタをそのまま投げることで
-                // ブートローダー内部のロジックが走り、自動で書き込みと終了後の再起動を行います。
-                let endpointOut = 1; 
-
-                for (let i = 0; i < uf2Data.length; i += chunkSize) {
-                    const chunk = uf2Data.slice(i, i + chunkSize);
-                    
-                    // WebUSBによる物理バルク転送
-                    await device.transferOut(endpointOut, chunk);
-
-                    const currentChunk = (i / chunkSize) + 1;
-                    const percent = Math.round((currentChunk / totalChunks) * 100);
+                progressBar.style.width = '0%';
+                progressBar.innerText = '0%';
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                // 4️⃣ DFU用のシリアルポートに再接続（ブラウザのセキュリティ制限のため再度選択）
+                statusDiv.innerText = "【重要】新しく出現した「ブートローダー(COMポート)」を選択してください...";
+                const dfuPort = await navigator.serial.requestPort();
+                
+                statusDiv.innerText = "nrfutilによる書き込みを開始します...";
+                
+                // 💡【nrfutil-jsの魔法】
+                // ライブラリを使い、WebSerialポートオブジェクトとZIPデータを渡すだけで、
+                // 内部で通信規約のパース・パケット分割・転送・確定（自動再起動コマンド）を全自動で代行します
+                await nrfutil.flashDFUPackage(dfuPort, zipDataBuffer, (progress) => {
+                    // 書き込み進捗のリアルタイムコールバック
+                    const percent = Math.round(progress * 100);
                     progressBar.style.width = `${percent}%`;
                     progressBar.innerText = `${percent}%`;
-                }
-
-                statusDiv.innerText = "書き込み完了。再起動をリクエスト中...";
+                    statusDiv.innerText = `ファームウェア本体を流し込み中... (${percent}%)`;
+                });
                 
-                // インターフェースの解放とクローズ
-                await device.releaseInterface(interfaceNum);
-                await device.close();
-
+                // 全て完了するとライブラリ側が自動で「Execute」を投げてXIAOを再起動させます
                 statusDiv.style.background = "#d4edda";
                 statusDiv.style.color = "#155724";
-                statusDiv.innerText = "✨ アップデート成功！XIAOが正常に再起動しました。";
-                
-                resetBtn.disabled = false;
-                writeBtn.disabled = true;
+                statusDiv.innerText = "✨ アップデート大成功！\nArduino IDEと同じ正規ルートで書き込まれ、XIAOが自動起動しました！";
 
-            } catch (error) {
-                console.error(error);
+            } catch (err) {
+                console.error(err);
                 statusDiv.style.background = "#f8d7da";
                 statusDiv.style.color = "#721c24";
-                statusDiv.innerText = `❌ エラー: ${error.message} (インターフェースまたはエンドポイントの不一致の可能性があります)`;
-                if (device) await device.close();
+                statusDiv.innerText = `❌ 書き込みエラー: ${err.message}`;
+            } finally {
+                flashBtn.disabled = false;
             }
         });
     </script>
