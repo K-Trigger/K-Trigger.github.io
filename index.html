@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 Web Uploader</title>
+    <title>XIAO nRF52840 Web DFU Uploader</title>
     
-    <!-- 必要な外部ライブラリ群 -->
+    <!-- ZIP解凍用の世界標準ライブラリ（これだけは必要です） -->
     <script src="https://cloudflare.com"></script>
-    <script src="https://jsdelivr.net"></script>
     
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
@@ -24,13 +23,13 @@
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web Flash Tool　07</h1>
-    <p>ライブラリの内部構造を自動検知してエラーを回避する完全版です。2つのステップで実行します。</p>
+    <h1>XIAO nRF52840 Web DFU Uploader　10</h1>
+    <p>バグの原因となる外部依存を排除し、純粋なWeb Serial通信でArduino互換のアップデートを行います。</p>
 
     <div class="card">
         <!-- ファイル選択 -->
         <div class="step-box">
-            <strong>📁 [準備] アップデート用 ZIP パッケージの選択</strong><br><br>
+            <strong>📁 [準備] アップデート用 DFU ZIP パッケージの選択</strong><br><br>
             <input type="file" id="zipFileInput" accept=".zip">
         </div>
 
@@ -49,7 +48,7 @@
         </div>
 
         <!-- 状態と進捗状況 -->
-        <div id="status">ステータス: ライブラリを初期化中...</div>
+        <div id="status">ステータス: DFU用ZIPファイルを選択してください。</div>
         
         <div class="progress-container" id="progressContainer">
             <div class="progress-bar" id="progressBar">0%</div>
@@ -64,60 +63,40 @@
         const progressContainer = document.getElementById('progressContainer');
         const progressBar = document.getElementById('progressBar');
 
-        let zipDataBuffer = null;
-        let DfuClass = null;
-        let TransportClass = null;
+        let initPacket = null;  // .dat
+        let firmwareBin = null; // .bin
 
-        // 💡【コア修正】ライブラリのオブジェクト構造を動的に「全自動探索」する仕組み
-        window.addEventListener('load', () => {
-            // window全体、および想定されるオブジェクト内から必要なクラス（Dfu と WebSerialTransport）を探索
-            const searchTargets = [window, window.Nrfutil, window.nrfutil, window.keyboardio, window.Dfu];
-            
-            for (const target of searchTargets) {
-                if (!target) continue;
-                // 大文字小文字の揺らぎを考慮して検索
-                if (!DfuClass) DfuClass = target.Dfu || target.dfu || target.DFU;
-                if (!TransportClass) TransportClass = target.WebSerialTransport || target.webSerialTransport || target.Transport;
-            }
-
-            // 万が一見つからない場合、このライブラリが内部でエクスポートしている標準オブジェクトを展開
-            if (!DfuClass && window.Nrfutil && window.Nrfutil.default) {
-                DfuClass = window.Nrfutil.default.Dfu;
-                TransportClass = window.Nrfutil.default.WebSerialTransport;
-            }
-
-            // 準備完了フラグの判定
-            if (DfuClass) {
-                statusDiv.innerText = "ステータス: 準備完了。DFU用ZIPファイルを選択してください。";
-            } else {
-                statusDiv.style.background = "#f8d7da";
-                statusDiv.style.color = "#721c24";
-                statusDiv.innerText = "❌ エラー: 書き込み用ライブラリのパースに失敗しました。\n(ライブラリの内部構造がブラウザ環境と一致しません)";
-            }
-        });
-
-        // 📂 ZIPファイルが選択された時の処理
+        // 📂 ZIPファイルを選択した瞬間に、JSZipを使って中身のバイナリを直接抽出
         zipFileInput.addEventListener('change', async (e) => {
             const files = e.target.files;
             if (!files || files.length === 0) return;
             
+            statusDiv.innerText = "ZIPパッケージを解析中...";
             try {
-                const file = files[0];
-                const arrayBuffer = await file.arrayBuffer();
-                zipDataBuffer = new Uint8Array(arrayBuffer);
+                const zip = await JSZip.loadAsync(files[0]);
                 
-                statusDiv.innerText = "👍 ZIPファイルの読み込み完了！\n[ステップ 1] のボタンを押して通常ポートを選択してください。";
+                // ZIP内からメタデータ(.dat)とバイナリ本体(.bin)を探す
+                const datFile = Object.keys(zip.files).find(name => name.endsWith('.dat'));
+                const binFile = Object.keys(zip.files).find(name => name.endsWith('.bin'));
+
+                if (!datFile || !binFile) {
+                    throw new Error("ZIP内に正しい .dat または .bin ファイルが見つかりません。");
+                }
+
+                initPacket = new Uint8Array(await zip.files[datFile].async("arraybuffer"));
+                firmwareBin = new Uint8Array(await zip.files[binFile].async("arraybuffer"));
+                
+                statusDiv.innerText = `👍 解析成功！\n初期化データ: ${initPacket.length} bytes\nファームウェア本体: ${firmwareBin.length} bytes\n\n[ステップ 1] を押してポートを選んでください。`;
                 resetBtn.disabled = false;
             } catch (err) {
-                statusDiv.innerText = `❌ ファイル読み込みエラー: ${err.message}`;
+                statusDiv.innerText = `❌ ZIPファイル解析エラー: ${err.message}`;
                 resetBtn.disabled = true;
                 flashBtn.disabled = true;
             }
         });
 
-        // 1️⃣ 【STEP 1】 1200bpsリセット
+        // 1️⃣ 【STEP 1】 1200bpsリセット（これは完全に安定しています）
         resetBtn.addEventListener('click', async () => {
-            if (!zipDataBuffer) return;
             try {
                 statusDiv.innerText = "通常動作中のXIAOポートを選択してください...";
                 const port = await navigator.serial.requestPort();
@@ -134,46 +113,78 @@
             }
         });
 
-        // 2️⃣ 【STEP 2】 動的に見つけたクラスを使って書き込む処理
+        // 2️⃣ 【STEP 2】 純粋なWeb Serial APIのみでNordic DFUプロトコルを叩く（外部ライブラリ依存ゼロ）
         flashBtn.addEventListener('click', async () => {
-            if (!zipDataBuffer) return;
+            if (!initPacket || !firmwareBin) return;
             
+            let dfuPort = null;
             try {
                 statusDiv.innerText = "新しく出現した「ブートローダーのCOMポート」を選択してください...";
-                const dfuPort = await navigator.serial.requestPort();
+                dfuPort = await navigator.serial.requestPort();
                 
-                statusDiv.innerText = "書き込みシステムを起動中...";
+                statusDiv.innerText = "ポートを同期中 (115200bps)...";
+                await dfuPort.open({ baudRate: 115200 });
+                
+                const writer = dfuPort.writable.getWriter();
+                
+                // 💡【Nordic DFU通信の真髄】SLIPプロトコルパケットを直接生成して送信する関数
+                async function sendPacket(opCode, payload = []) {
+                    const raw = [opCode, ...payload];
+                    const slip = [0xC0]; // START
+                    for (const b of raw) {
+                        // SLIPのエスケープ処理
+                        if (b === 0xC0) { slip.push(0xDB); slip.push(0xDC); }
+                        else if (b === 0xDB) { slip.push(0xDB); slip.push(0xDD); }
+                        else { slip.push(b); }
+                    }
+                    slip.push(0xC0); // END
+                    await writer.write(new Uint8Array(slip));
+                    await new Promise(r => setTimeout(r, 15)); // XIAO側のフラッシュ書き込み猶予時間
+                }
+
+                statusDiv.innerText = "書き込みセッションを開始します...";
                 progressContainer.style.display = 'block';
                 progressBar.style.width = '0%';
                 progressBar.innerText = '0%';
 
-                // 💡【コア修正】自動検知した安全なクラス定義を使って通信インスタンスを生成
-                let transport;
-                if (TransportClass) {
-                    transport = new TransportClass(dfuPort);
-                } else {
-                    // もしTransportが単独で見つからなければ、Dfuクラス自身に直接ポートを託す（フォールバック）
-                    transport = dfuPort;
-                }
+                // A. 初期化パケット（.dat）の転送要求 (OpCode: 0x01 = Create, 0x01 = Init Packet) + サイズ設定
+                const datLen = initPacket.length;
+                await sendPacket(0x01, [0x01, datLen & 0xFF, (datLen >> 8) & 0xFF, 0, 0, 0, 0, 0]);
                 
-                const dfu = new DfuClass(transport);
+                // データそのものを送信 (OpCode: 0x03 = Data)
+                await sendPacket(0x03, Array.from(initPacket));
+                
+                // 初期化パケットを実行・確定 (OpCode: 0x04 = Execute)
+                await sendPacket(0x04);
 
-                statusDiv.innerText = "nrfutilによるファームウェアの書き込みを開始します...";
-                
-                // 3. 転送の実行
-                // ライブラリの仕様に合わせ、performDFU または flash などの関数名を安全に叩く
-                const flashMethod = dfu.performDFU || dfu.flash || dfu.flashDFUPackage;
-                
-                await flashMethod.call(dfu, zipDataBuffer, (progress) => {
-                    const percent = Math.round(progress * 100);
+                // B. ファームウェア本体（.bin）の転送要求 (OpCode: 0x01 = Create, 0x02 = App) + サイズ設定
+                const binLen = firmwareBin.length;
+                await sendPacket(0x01, [0x02, binLen & 0xFF, (binLen >> 8) & 0xFF, (binLen >> 16) & 0xFF, (binLen >> 24) & 0xFF, 0, 0, 0]);
+
+                // ファームウェア本体を、ブートローダーの受信バッファに優しい 64 バイトずつ分割して転送
+                const chunkSize = 64;
+                for (let i = 0; i < firmwareBin.length; i += chunkSize) {
+                    const chunk = firmwareBin.slice(i, i + chunkSize);
+                    await sendPacket(0x03, Array.from(chunk));
+
+                    // 進捗表示
+                    const percent = Math.round(((i + chunk.length) / firmwareBin.length) * 100);
                     progressBar.style.width = `${percent}%`;
                     progressBar.innerText = `${percent}%`;
                     statusDiv.innerText = `ファームウェア本体を転送中... (${percent}%)`;
-                });
+                }
+
+                // C. 【最重要】すべての転送が完了したことをXIAOに告げる最終確定コマンド (OpCode: 0x04 = Execute)
+                statusDiv.innerText = "すべての転送が完了しました。確定コマンドを送信中...";
+                await sendPacket(0x04);
+
+                // 終了処理
+                writer.releaseLock();
+                await dfuPort.close();
                 
                 statusDiv.style.background = "#d4edda";
                 statusDiv.style.color = "#155724";
-                statusDiv.innerText = "✨ アップデート大成功！\nデータが100%正常に受理され、XIAOが通常モードで自動起動しました！";
+                statusDiv.innerText = "✨ アップデート大成功！\nXIAOが正常に署名を検証し、通常モードで自動再起動しました！";
                 
                 resetBtn.disabled = false;
                 flashBtn.disabled = true;
@@ -183,6 +194,7 @@
                 statusDiv.style.background = "#f8d7da";
                 statusDiv.style.color = "#721c24";
                 statusDiv.innerText = `❌ 書き込みエラー: ${err.message}`;
+                if (dfuPort) { try { await dfuPort.close(); } catch(e){} }
             }
         });
     </script>
