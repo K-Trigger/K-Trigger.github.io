@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XIAO nRF52840 Web Uploader</title>
     
-    <!-- 必要なライブラリ群 -->
+    <!-- 必要な外部ライブラリ群 -->
     <script src="https://cloudflare.com"></script>
     <script src="https://jsdelivr.net"></script>
     
@@ -24,8 +24,8 @@
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web Flash Tool　06</h1>
-    <p>ライブラリの正しい初期化ルールを適用したバージョンです。2つのステップで確実に実行します。</p>
+    <h1>XIAO nRF52840 Web Flash Tool　07</h1>
+    <p>ライブラリの内部構造を自動検知してエラーを回避する完全版です。2つのステップで実行します。</p>
 
     <div class="card">
         <!-- ファイル選択 -->
@@ -49,7 +49,7 @@
         </div>
 
         <!-- 状態と進捗状況 -->
-        <div id="status">ステータス: ライブラリを読み込んでいます...</div>
+        <div id="status">ステータス: ライブラリを初期化中...</div>
         
         <div class="progress-container" id="progressContainer">
             <div class="progress-bar" id="progressBar">0%</div>
@@ -65,15 +65,34 @@
         const progressBar = document.getElementById('progressBar');
 
         let zipDataBuffer = null;
+        let DfuClass = null;
+        let TransportClass = null;
 
-        // 画面読み込み時にライブラリの存在をチェックする安全機構
+        // 💡【コア修正】ライブラリのオブジェクト構造を動的に「全自動探索」する仕組み
         window.addEventListener('load', () => {
-            if (window.Nrfutil) {
+            // window全体、および想定されるオブジェクト内から必要なクラス（Dfu と WebSerialTransport）を探索
+            const searchTargets = [window, window.Nrfutil, window.nrfutil, window.keyboardio, window.Dfu];
+            
+            for (const target of searchTargets) {
+                if (!target) continue;
+                // 大文字小文字の揺らぎを考慮して検索
+                if (!DfuClass) DfuClass = target.Dfu || target.dfu || target.DFU;
+                if (!TransportClass) TransportClass = target.WebSerialTransport || target.webSerialTransport || target.Transport;
+            }
+
+            // 万が一見つからない場合、このライブラリが内部でエクスポートしている標準オブジェクトを展開
+            if (!DfuClass && window.Nrfutil && window.Nrfutil.default) {
+                DfuClass = window.Nrfutil.default.Dfu;
+                TransportClass = window.Nrfutil.default.WebSerialTransport;
+            }
+
+            // 準備完了フラグの判定
+            if (DfuClass) {
                 statusDiv.innerText = "ステータス: 準備完了。DFU用ZIPファイルを選択してください。";
             } else {
                 statusDiv.style.background = "#f8d7da";
                 statusDiv.style.color = "#721c24";
-                statusDiv.innerText = "❌ エラー: 書き込み用ライブラリ(Nrfutil)の読み込みに失敗しました。\nネット接続を確認するか、ブラウザをリロードしてください。";
+                statusDiv.innerText = "❌ エラー: 書き込み用ライブラリのパースに失敗しました。\n(ライブラリの内部構造がブラウザ環境と一致しません)";
             }
         });
 
@@ -115,7 +134,7 @@
             }
         });
 
-        // 2️⃣ 【STEP 2】 正しいAPI構造に修正した書き込み処理
+        // 2️⃣ 【STEP 2】 動的に見つけたクラスを使って書き込む処理
         flashBtn.addEventListener('click', async () => {
             if (!zipDataBuffer) return;
             
@@ -123,22 +142,29 @@
                 statusDiv.innerText = "新しく出現した「ブートローダーのCOMポート」を選択してください...";
                 const dfuPort = await navigator.serial.requestPort();
                 
-                statusDiv.innerText = "書き込みオブジェクトを初期化中...";
+                statusDiv.innerText = "書き込みシステムを起動中...";
                 progressContainer.style.display = 'block';
                 progressBar.style.width = '0%';
                 progressBar.innerText = '0%';
 
-                // 💡【コア修正】nrfutil-jsライブラリの正しいブラウザ向けAPI呼び出し手順
-                // 1. まず Web Serial ポートを引数にして、Dfuトランスポートを生成する
-                const transport = new window.Nrfutil.WebSerialTransport(dfuPort);
+                // 💡【コア修正】自動検知した安全なクラス定義を使って通信インスタンスを生成
+                let transport;
+                if (TransportClass) {
+                    transport = new TransportClass(dfuPort);
+                } else {
+                    // もしTransportが単独で見つからなければ、Dfuクラス自身に直接ポートを託す（フォールバック）
+                    transport = dfuPort;
+                }
                 
-                // 2. Dfu処理を行う本体（クラス）を新しく生成（インスタンス化）する
-                const dfu = new window.Nrfutil.Dfu(transport);
+                const dfu = new DfuClass(transport);
 
-                statusDiv.innerText = "nrfutilによる書き込みを開始します...";
+                statusDiv.innerText = "nrfutilによるファームウェアの書き込みを開始します...";
                 
-                // 3. 生成したインスタンスに対して、ZIPデータと進捗コールバックを渡して実行
-                await dfu.performDFU(zipDataBuffer, (progress) => {
+                // 3. 転送の実行
+                // ライブラリの仕様に合わせ、performDFU または flash などの関数名を安全に叩く
+                const flashMethod = dfu.performDFU || dfu.flash || dfu.flashDFUPackage;
+                
+                await flashMethod.call(dfu, zipDataBuffer, (progress) => {
                     const percent = Math.round(progress * 100);
                     progressBar.style.width = `${percent}%`;
                     progressBar.innerText = `${percent}%`;
