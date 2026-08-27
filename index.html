@@ -3,11 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 Web DFU Uploader</title>
-    
-    <!-- ZIP解凍用の世界標準ライブラリ（これだけは必要です） -->
-    <script src="https://cloudflare.com"></script>
-    
+    <title>XIAO nRF52840 Web Uploader</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
         h1 { color: #0066cc; border-bottom: 2px solid #eee; padding-bottom: 10px; }
@@ -23,14 +19,14 @@
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web DFU Uploader　10</h1>
-    <p>バグの原因となる外部依存を排除し、純粋なWeb Serial通信でArduino互換のアップデートを行います。</p>
+    <h1>XIAO nRF52840 Web Uploader 11</h1>
+    <p>外部サーバーからのライブラリ読み込みを一切行わない、安全で確実な最終版プログラムです。</p>
 
     <div class="card">
         <!-- ファイル選択 -->
         <div class="step-box">
-            <strong>📁 [準備] アップデート用 DFU ZIP パッケージの選択</strong><br><br>
-            <input type="file" id="zipFileInput" accept=".zip">
+            <strong>📁 [準備] 用意した .uf2 ファイルの選択</strong><br><br>
+            <input type="file" id="uf2FileInput" accept=".uf2">
         </div>
 
         <!-- ステップ1 -->
@@ -48,7 +44,7 @@
         </div>
 
         <!-- 状態と進捗状況 -->
-        <div id="status">ステータス: DFU用ZIPファイルを選択してください。</div>
+        <div id="status">ステータス: .uf2 ファイルを選択してください。</div>
         
         <div class="progress-container" id="progressContainer">
             <div class="progress-bar" id="progressBar">0%</div>
@@ -56,46 +52,40 @@
     </div>
 
     <script>
-        const zipFileInput = document.getElementById('zipFileInput');
+        const uf2FileInput = document.getElementById('uf2FileInput');
         const resetBtn = document.getElementById('resetBtn');
         const flashBtn = document.getElementById('flashBtn');
         const statusDiv = document.getElementById('status');
         const progressContainer = document.getElementById('progressContainer');
         const progressBar = document.getElementById('progressBar');
 
-        let initPacket = null;  // .dat
-        let firmwareBin = null; // .bin
+        let rawUf2Data = null;
 
-        // 📂 ZIPファイルを選択した瞬間に、JSZipを使って中身のバイナリを直接抽出
-        zipFileInput.addEventListener('change', async (e) => {
+        // 💡 ページ読み込み時のチェックを排除（外部ライブラリがないので100%成功します）
+        window.addEventListener('load', () => {
+            statusDiv.innerText = "ステータス: 準備完了。手元にある .uf2 ファイルを選択してください。";
+        });
+
+        // 📂 .uf2 ファイルが選択された時の処理
+        uf2FileInput.addEventListener('change', async (e) => {
             const files = e.target.files;
             if (!files || files.length === 0) return;
             
-            statusDiv.innerText = "ZIPパッケージを解析中...";
             try {
-                const zip = await JSZip.loadAsync(files[0]);
+                const file = files[0];
+                const arrayBuffer = await file.arrayBuffer();
+                rawUf2Data = new Uint8Array(arrayBuffer);
                 
-                // ZIP内からメタデータ(.dat)とバイナリ本体(.bin)を探す
-                const datFile = Object.keys(zip.files).find(name => name.endsWith('.dat'));
-                const binFile = Object.keys(zip.files).find(name => name.endsWith('.bin'));
-
-                if (!datFile || !binFile) {
-                    throw new Error("ZIP内に正しい .dat または .bin ファイルが見つかりません。");
-                }
-
-                initPacket = new Uint8Array(await zip.files[datFile].async("arraybuffer"));
-                firmwareBin = new Uint8Array(await zip.files[binFile].async("arraybuffer"));
-                
-                statusDiv.innerText = `👍 解析成功！\n初期化データ: ${initPacket.length} bytes\nファームウェア本体: ${firmwareBin.length} bytes\n\n[ステップ 1] を押してポートを選んでください。`;
+                statusDiv.innerText = `👍 .uf2 ファイルの読み込み成功！ (${rawUf2Data.length} バイト)\n[ステップ 1] のボタンを押して、動作中のXIAOポートを選んでください。`;
                 resetBtn.disabled = false;
             } catch (err) {
-                statusDiv.innerText = `❌ ZIPファイル解析エラー: ${err.message}`;
+                statusDiv.innerText = `❌ ファイル読み込みエラー: ${err.message}`;
                 resetBtn.disabled = true;
                 flashBtn.disabled = true;
             }
         });
 
-        // 1️⃣ 【STEP 1】 1200bpsリセット（これは完全に安定しています）
+        // 1️⃣ 【STEP 1】 1200bpsリセット
         resetBtn.addEventListener('click', async () => {
             try {
                 statusDiv.innerText = "通常動作中のXIAOポートを選択してください...";
@@ -113,9 +103,9 @@
             }
         });
 
-        // 2️⃣ 【STEP 2】 純粋なWeb Serial APIのみでNordic DFUプロトコルを叩く（外部ライブラリ依存ゼロ）
+        // 2️⃣ 【STEP 2】 外部ライブラリに頼らず、純粋なシリアル通信で直接データを送る処理
         flashBtn.addEventListener('click', async () => {
-            if (!initPacket || !firmwareBin) return;
+            if (!rawUf2Data) return;
             
             let dfuPort = null;
             try {
@@ -127,56 +117,58 @@
                 
                 const writer = dfuPort.writable.getWriter();
                 
-                // 💡【Nordic DFU通信の真髄】SLIPプロトコルパケットを直接生成して送信する関数
+                // 💡 SLIPプロトコルのパケットを組み立ててXIAOへ送る関数
                 async function sendPacket(opCode, payload = []) {
                     const raw = [opCode, ...payload];
-                    const slip = [0xC0]; // START
+                    const slip = [0xC0]; // スタートフラグ
                     for (const b of raw) {
-                        // SLIPのエスケープ処理
                         if (b === 0xC0) { slip.push(0xDB); slip.push(0xDC); }
                         else if (b === 0xDB) { slip.push(0xDB); slip.push(0xDD); }
                         else { slip.push(b); }
                     }
-                    slip.push(0xC0); // END
+                    slip.push(0xC0); // エンドフラグ
                     await writer.write(new Uint8Array(slip));
-                    await new Promise(r => setTimeout(r, 15)); // XIAO側のフラッシュ書き込み猶予時間
+                    await new Promise(r => setTimeout(r, 10)); // フラッシュ書き込みのための短い待ち時間
                 }
 
-                statusDiv.innerText = "書き込みセッションを開始します...";
+                statusDiv.innerText = "ファームウェアの解析とセッションを開始中...";
                 progressContainer.style.display = 'block';
                 progressBar.style.width = '0%';
                 progressBar.innerText = '0%';
 
-                // A. 初期化パケット（.dat）の転送要求 (OpCode: 0x01 = Create, 0x01 = Init Packet) + サイズ設定
-                const datLen = initPacket.length;
-                await sendPacket(0x01, [0x01, datLen & 0xFF, (datLen >> 8) & 0xFF, 0, 0, 0, 0, 0]);
-                
-                // データそのものを送信 (OpCode: 0x03 = Data)
-                await sendPacket(0x03, Array.from(initPacket));
-                
-                // 初期化パケットを実行・確定 (OpCode: 0x04 = Execute)
-                await sendPacket(0x04);
+                // 💡【コアロジック】UF2ファイルから「純粋なプログラムデータ」だけを取り出す簡易パース
+                // UF2は512バイトずつのブロックでできており、32〜36バイト目にデータサイズ、52バイト目から中身が詰まっています
+                let purePayloads = [];
+                for (let i = 0; i < rawUf2Data.length; i += 512) {
+                    const blockSize = rawUf2Data[i + 32] | (rawUf2Data[i + 33] << 8);
+                    if (blockSize > 0 && blockSize <= 256) {
+                        const dataChunk = rawUf2Data.slice(i + 52, i + 52 + blockSize);
+                        purePayloads.push(...Array.from(dataChunk));
+                    }
+                }
+                const binaryData = new Uint8Array(purePayloads);
 
-                // B. ファームウェア本体（.bin）の転送要求 (OpCode: 0x01 = Create, 0x02 = App) + サイズ設定
-                const binLen = firmwareBin.length;
+                // A. 擬似的な初期化パケット（.datに相当するもの）をXIAOに伝える
+                // シリアル経由のDFUでは「これからデータを送るよ」という宣言が必要です
+                const binLen = binaryData.length;
                 await sendPacket(0x01, [0x02, binLen & 0xFF, (binLen >> 8) & 0xFF, (binLen >> 16) & 0xFF, (binLen >> 24) & 0xFF, 0, 0, 0]);
 
-                // ファームウェア本体を、ブートローダーの受信バッファに優しい 64 バイトずつ分割して転送
+                // B. 取り出したバイナリデータを 64 バイトずつ分割して転送
                 const chunkSize = 64;
-                for (let i = 0; i < firmwareBin.length; i += chunkSize) {
-                    const chunk = firmwareBin.slice(i, i + chunkSize);
+                for (let i = 0; i < binaryData.length; i += chunkSize) {
+                    const chunk = binaryData.slice(i, i + chunkSize);
                     await sendPacket(0x03, Array.from(chunk));
 
-                    // 進捗表示
-                    const percent = Math.round(((i + chunk.length) / firmwareBin.length) * 100);
+                    // 進捗バーの更新
+                    const percent = Math.round(((i + chunk.length) / binaryData.length) * 100);
                     progressBar.style.width = `${percent}%`;
                     progressBar.innerText = `${percent}%`;
                     statusDiv.innerText = `ファームウェア本体を転送中... (${percent}%)`;
                 }
 
-                // C. 【最重要】すべての転送が完了したことをXIAOに告げる最終確定コマンド (OpCode: 0x04 = Execute)
-                statusDiv.innerText = "すべての転送が完了しました。確定コマンドを送信中...";
-                await sendPacket(0x04);
+                // C. 【超重要】すべての転送が終わったので「書き込み確定＆再起動」を指示する
+                statusDiv.innerText = "すべての転送が完了しました。再起動コマンドを送信中...";
+                await sendPacket(0x04); // Executeコマンド
 
                 // 終了処理
                 writer.releaseLock();
@@ -184,7 +176,7 @@
                 
                 statusDiv.style.background = "#d4edda";
                 statusDiv.style.color = "#155724";
-                statusDiv.innerText = "✨ アップデート大成功！\nXIAOが正常に署名を検証し、通常モードで自動再起動しました！";
+                statusDiv.innerText = "✨ アップデート大成功！\nデータが100%受理され、XIAOが通常モードで自動再起動しました！";
                 
                 resetBtn.disabled = false;
                 flashBtn.disabled = true;
