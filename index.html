@@ -7,70 +7,39 @@
     <style>
         body { font-family: system-ui, sans-serif; text-align: center; padding: 50px; background-color: #f5f5f7; }
         .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: inline-block; width: 400px; }
+        /* ライブラリがボタンを正しくラップできるように表示を調整 */
+        nrf-web-tools-button { display: inline-block; margin: 20px auto; }
         button { padding: 12px 24px; font-size: 16px; font-weight: bold; background-color: #0071e3; color: white; border: none; border-radius: 8px; cursor: pointer; }
         button:hover { background-color: #0077ed; }
-        #status { margin-top: 20px; padding: 12px; border-radius: 8px; background-color: #ffeef0; color: #d9383a; font-size: 14px; text-align: left; display: none; border: 1px solid #fdb8c0; white-space: pre-wrap; }
+        #error-log { margin-top: 20px; padding: 12px; border-radius: 8px; background-color: #ffeef0; color: #d9383a; font-size: 14px; text-align: left; display: none; border: 1px solid #fdb8c0; white-space: pre-wrap; }
     </style>
+    <!-- unpkgからnrf-web-toolsのスクリプトをロード -->
     <script type="module" src="https://unpkg.com"></script>
 </head>
 <body>
 
     <div class="card">
-        <!-- バージョン識別ナンバー（Rev.2） -->
-        <h1>nRF52 Web アップデート (Rev.2)</h1>
+        <!-- バージョン識別ナンバー（Rev.4） -->
+        <h1>nRF52 Web アップデート (Rev.4)</h1>
         <p>デバイスを接続し、下のボタンを押してください。</p>
 
-        <!-- 指定のZIPファイルをセット -->
-        <nrf-web-tools-button id="dfu-element" package="./HIKIGANEV3.1_RT.zip">
-            <button id="action-btn">ファームウェアを書き込む</button>
+        <!-- 指定のZIPファイルをセット（干渉を避けるためidや独自のclickイベントを撤廃） -->
+        <nrf-web-tools-button package="./HIKIGANEV3.1_RT.zip">
+            <button slot="activate">ファームウェアを書き込む</button>
         </nrf-web-tools-button>
 
-        <div id="status"></div>
+        <!-- エラーが発生した時だけ表示するボックス -->
+        <div id="error-log"></div>
     </div>
 
     <script>
-        const statusDiv = document.getElementById('status');
-        const actionBtn = document.getElementById('action-btn');
-        const dfuElement = document.getElementById('dfu-element');
+        const errorLog = document.getElementById('error-log');
+        const nrfButton = document.querySelector('nrf-web-tools-button');
 
-        function printLog(msg, isError = true) {
-            statusDiv.innerText = msg;
-            statusDiv.style.backgroundColor = isError ? '#ffeef0' : '#e6f4ea';
-            statusDiv.style.color = isError ? '#d9383a' : '#137333';
-            statusDiv.style.borderColor = isError ? '#fdb8c0' : '#81c995';
-            statusDiv.style.display = 'block';
-        }
-
-        window.addEventListener('DOMContentLoaded', async () => {
-            if (!navigator.serial) {
-                printLog('【エラー】ブラウザがWeb Serialに対応していません。ChromeまたはEdgeを使用してください。');
-                return;
-            }
-            if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-                printLog('【エラー】セキュリティ制限により、HTTPS接続環境（GitHub Pagesなど）上でないと動作しません。');
-                return;
-            }
-
-            // ZIPファイルの存在チェック（ブラウザキャッシュを無視するタイムスタンプ付き）
-            const baseZipUrl = dfuElement.getAttribute('package');
-            const versionedZipUrl = `${baseZipUrl}?t=${Date.now()}`; 
-            
-            try {
-                const response = await fetch(versionedZipUrl, { method: 'HEAD' });
-                if (!response.ok) {
-                    printLog(`【ファイル未検出】\nリポジトリ内に「HIKIGANEV3.1_RT.zip」が見つかりません。`);
-                }
-            } catch (err) {
-                printLog(`【ファイルアクセスエラー】\nZIPファイルの読み込みに失敗しました。\n${err.message}`);
-            }
-        });
-
-        actionBtn.addEventListener('click', () => {
-            printLog('通信を開始します。ポート選択画面が出ない場合はJavaScriptのロードに失敗しています。', false);
-        });
-
-        dfuElement.addEventListener('error', (e) => {
-            printLog(`【DFU書き込みエラー】\n${e.detail?.message || 'COMポートのオープンに失敗したか、通信が遮断されました。'}`);
+        // エラー発生時のみログを表示する
+        nrfButton.addEventListener('error', (e) => {
+            errorLog.innerText = `【DFU書き込みエラー】\n${e.detail?.message || 'COMポートのオープンに失敗したか、通信が遮断されました。'}`;
+            errorLog.style.display = 'block';
         });
     </script>
 
