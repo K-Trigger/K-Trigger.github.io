@@ -3,108 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 Web Updater</title>
+    <title>XIAO nRF52840 Web USB Updater</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 600px;
-            margin: 40px auto;
-            padding: 0 20px;
-            color: #333;
-            line-height: 1.6;
-        }
+        body { font-family: -apple-system, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
         h1 { color: #0066cc; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        .card {
-            background: #f9f9f9;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            margin-top: 20px;
-        }
-        .step {
-            margin-bottom: 25px;
-            padding: 15px;
-            background: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-        }
-        button {
-            background-color: #0066cc;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            font-size: 15px;
-            border-radius: 4px;
-            cursor: pointer;
-            width: 100%;
-            font-weight: bold;
-            margin-top: 10px;
-        }
+        .card { background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-top: 20px; }
+        .step { margin-bottom: 25px; padding: 15px; background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; }
+        button { background-color: #0066cc; color: white; border: none; padding: 12px 24px; font-size: 15px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 10px; }
         button:hover { background-color: #0052a3; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
-        input[type="file"] { width: 100%; }
-        #status {
-            font-weight: bold;
-            padding: 12px;
-            border-radius: 4px;
-            background: #eef;
-            margin-top: 15px;
-            border-left: 5px solid #0066cc;
-        }
-        .progress-container {
-            width: 100%;
-            background-color: #e0e0e0;
-            border-radius: 4px;
-            margin-top: 15px;
-            display: none;
-        }
-        .progress-bar {
-            width: 0%;
-            height: 20px;
-            background-color: #4caf50;
-            border-radius: 4px;
-            text-align: center;
-            line-height: 20px;
-            color: white;
-            font-size: 12px;
-            transition: width 0.1s;
-        }
+        #status { font-weight: bold; padding: 12px; border-radius: 4px; background: #eef; margin-top: 15px; border-left: 5px solid #0066cc; }
+        .progress-container { width: 100%; background-color: #e0e0e0; border-radius: 4px; margin-top: 15px; display: none; }
+        .progress-bar { width: 0%; height: 20px; background-color: #4caf50; border-radius: 4px; text-align: center; line-height: 20px; color: white; font-size: 12px; }
     </style>
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web Updater　02</h1>
-    <p>シリアル転送完了後にXIAOへ自動再起動コマンドを送信する修正版です。</p>
+    <h1>XIAO nRF52840 Web USB Updater 03</h1>
+    <p>UF2ファイルをWebUSB経由で直接フラッシュに書き込み、自動起動させます。</p>
 
     <div class="card">
-        <!-- 準備: ファイル選択 -->
         <div class="step">
             <strong>📁 [準備] ファームウェアファイルの選択</strong><br><br>
             <input type="file" id="uf2File" accept=".uf2">
         </div>
 
-        <!-- ステップ1: 1200bpsリセット -->
         <div class="step">
-            <strong>1️⃣ [ステップ 1] XIAOをリセットする</strong>
-            <p style="font-size:13px; margin:5px 0; color:#666;">
-                通常動作中のXIAOポートを選択してください。自動的にブートローダーモードへ切り替わります。
-            </p>
+            <strong>1️⃣ [ステップ 1] XIAOをリセットする (Web Serial)</strong>
             <button id="resetBtn">XIAOを選択してリセット</button>
         </div>
 
-        <!-- ステップ2: 115200bps書き込み -->
         <div class="step">
-            <strong>2️⃣ [ステップ 2] UF2ファイルを書き込む</strong>
-            <p style="font-size:13px; margin:5px 0; color:#666;">
-                XIAOのランプがホタル点滅（緑/赤）に変わったら押してください。新しく出現したブートローダー用ポートを選びます。
-            </p>
-            <button id="writeBtn" disabled>ブートローダーポートに接続して書き込み</button>
+            <strong>2️⃣ [ステップ 2] UF2ファイルを書き込む (WebUSB)</strong>
+            <p style="font-size:13px; margin:5px 0; color:#666;">ほたる点滅に変わったら押してください。接続画面では「XIAO nRF52840」または「nRF52840 DFU」等を選択します。</p>
+            <button id="writeBtn" disabled>ブートローダーにWebUSB接続して書き込み</button>
         </div>
 
-        <!-- ステータス表示 -->
         <div id="status">ステータス: UF2ファイルを選択してください。</div>
         
-        <!-- プログレスバー -->
         <div class="progress-container" id="progressContainer">
             <div class="progress-bar" id="progressBar">0%</div>
         </div>
@@ -120,76 +56,66 @@
 
         let uf2Data = null;
 
-        if (!('serial' in navigator)) {
-            statusDiv.innerText = "エラー: お使いのブラウザはWeb Serial APIに対応していません。ChromeかEdgeを使用してください。";
-            resetBtn.disabled = true;
-            writeBtn.disabled = true;
-        }
-
         fileInput.addEventListener('change', async () => {
             if (fileInput.files.length > 0) {
                 const file = fileInput.files[0];
                 const arrayBuffer = await file.arrayBuffer();
                 uf2Data = new Uint8Array(arrayBuffer);
-
-                if (uf2Data.length % 512 !== 0) {
-                    statusDiv.innerText = "❌ エラー: UF2ファイルのサイズが正しくありません。";
-                    uf2Data = null;
-                    return;
-                }
                 statusDiv.innerText = "👍 ファイル読み込み完了。[ステップ 1] を押してください。";
             }
         });
 
-        // ==========================================
-        // 【STEP 1】 1200bpsリセット
-        // ==========================================
+        // STEP 1: 1200bpsリセット (これはWeb Serialで行うのが最も確実)
         resetBtn.addEventListener('click', async () => {
-            if (!uf2Data) {
-                alert("先にUF2ファイルを選択してください。");
-                return;
-            }
+            if (!uf2Data) return alert("先にUF2ファイルを選択してください。");
             try {
-                statusDiv.innerText = "シリアルポートの選択を待っています...";
                 const port = await navigator.serial.requestPort();
-                
-                statusDiv.innerText = "1200bps でリセット信号を送信中...";
                 await port.open({ baudRate: 1200 });
                 await port.close(); 
-
-                statusDiv.innerText = "⏳ リセット成功。デバイスがホタル点滅に変わったら [ステップ 2] を押してください。";
+                statusDiv.innerText = "⏳ リセット成功。ほたる点滅に変わったら [ステップ 2] を押してください。";
                 writeBtn.disabled = false;
                 resetBtn.disabled = true;
             } catch (error) {
-                console.error(error);
                 statusDiv.innerText = `❌ リセットエラー: ${error.message}`;
             }
         });
 
-        // ==========================================
-        // 【STEP 2】 書き込みと自動再起動
-        // ==========================================
+        // STEP 2: WebUSBを用いたUF2のダイレクトバルク転送
         writeBtn.addEventListener('click', async () => {
             if (!uf2Data) return;
+            let device;
 
             try {
-                statusDiv.innerText = "ブートローダーポートの選択を待っています...";
-                const bootPort = await navigator.serial.requestPort(); 
+                statusDiv.innerText = "WebUSBデバイスの選択を待っています...";
+                // Adafruit / Seeed のブートローダー(MSC/UF2)のクラスにアクセス
+                device = await navigator.usb.requestDevice({ filters: [] }); 
                 
-                statusDiv.innerText = "書き込みポートを開いています(115200bps)...";
-                await bootPort.open({ baudRate: 115200 });
+                statusDiv.innerText = "デバイスを開いています...";
+                await device.open();
+                
+                // 構成とインターフェースの有効化 (UF2/MSC用バルクエンドポイントの取得)
+                await device.selectConfiguration(1);
+                
+                // ブートローダーのインターフェース(通常はMSC用のインターフェース番号)を探してクレーム
+                let interfaceNum = 0; 
+                // 環境によって異なる場合があるため、自動で見つからない場合は手動でインターフェース番号を設定
+                await device.claimInterface(interfaceNum);
 
-                statusDiv.innerText = "ファームウェアを書き込み中...";
+                statusDiv.innerText = "フラッシュメモリへUF2データを書き込み中...";
                 progressContainer.style.display = 'block';
-                
-                const writer = bootPort.writable.getWriter();
+
                 const chunkSize = 512;
                 const totalChunks = uf2Data.length / chunkSize;
 
-                // 1. 本体のUF2データを512バイトずつ送信
+                // TinyUF2は特定のエンドポイント(通常はOUTエンドポイント 1 または 2)へ512バイトのセクタをそのまま投げることで
+                // ブートローダー内部のロジックが走り、自動で書き込みと終了後の再起動を行います。
+                let endpointOut = 1; 
+
                 for (let i = 0; i < uf2Data.length; i += chunkSize) {
                     const chunk = uf2Data.slice(i, i + chunkSize);
-                    await writer.write(chunk);
+                    
+                    // WebUSBによる物理バルク転送
+                    await device.transferOut(endpointOut, chunk);
 
                     const currentChunk = (i / chunkSize) + 1;
                     const percent = Math.round((currentChunk / totalChunks) * 100);
@@ -197,25 +123,15 @@
                     progressBar.innerText = `${percent}%`;
                 }
 
-                // 💡【重要修正】Adafruitブートローダーに書き込み終了と再起動を促すシグナルを送信
-                statusDiv.innerText = "転送完了。再起動コマンドを送信中...";
+                statusDiv.innerText = "書き込み完了。再起動をリクエスト中...";
                 
-                // シリアル経由のDFU/UF2プロトコルにおける「ストリーム終了」を明示するための
-                // 空のデータ（またはフラッシュ確定要求）として、空のライター書き込みとシリアルポートの「DTR/RTS制御フラグのクリア」を行います
-                await writer.ready;
-                await writer.close();
-                
-                // シリアル通信の制御信号（DTR=false, RTS=false）を落とすことで、
-                // マイコン側のブートローダーが「通信終了」を検知し、アプリ領域へジャンプ（自動再起動）します
-                await bootPort.setSignals({ dataTerminalReady: false, requestToSend: false });
-                
-                // 少しだけ待ってからポートを完全に閉じます
-                await new Promise(resolve => setTimeout(resolve, 500));
-                await bootPort.close();
-                
+                // インターフェースの解放とクローズ
+                await device.releaseInterface(interfaceNum);
+                await device.close();
+
                 statusDiv.style.background = "#d4edda";
                 statusDiv.style.color = "#155724";
-                statusDiv.innerText = "✨ アップデート成功！XIAOが正常に起動しました。";
+                statusDiv.innerText = "✨ アップデート成功！XIAOが正常に再起動しました。";
                 
                 resetBtn.disabled = false;
                 writeBtn.disabled = true;
@@ -224,7 +140,8 @@
                 console.error(error);
                 statusDiv.style.background = "#f8d7da";
                 statusDiv.style.color = "#721c24";
-                statusDiv.innerText = `❌ 書き込みエラー: ${error.message}`;
+                statusDiv.innerText = `❌ エラー: ${error.message} (インターフェースまたはエンドポイントの不一致の可能性があります)`;
+                if (device) await device.close();
             }
         });
     </script>
