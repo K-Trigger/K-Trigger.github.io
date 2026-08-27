@@ -3,103 +3,223 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 ファームウェア更新</title>
+    <title>XIAO nRF52840 Web Updater</title>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f4f7f6; color: #333; }
-        .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: inline-block; max-width: 500px; width: 100%; text-align: left; }
-        h2 { text-align: center; margin-top: 0; color: #007bff; }
-        ol { padding-left: 20px; line-height: 1.6; }
-        button { display: block; width: 100%; background: #007bff; color: white; border: none; padding: 14px; font-size: 16px; border-radius: 6px; cursor: pointer; margin-top: 25px; font-weight: bold; transition: background 0.2s; }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #cccccc; cursor: not-allowed; }
-        #status { margin-top: 20px; padding: 12px; background: #e9ecef; border-radius: 6px; font-family: monospace; font-size: 14px; white-space: pre-wrap; word-break: break-all; min-height: 40px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 0 20px;
+            color: #333;
+            line-height: 1.6;
+        }
+        h1 { color: #0066cc; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .card {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .step {
+            margin-bottom: 25px;
+            padding: 15px;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        button {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        button:hover { background-color: #0052a3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        input[type="file"] { width: 100%; }
+        #status {
+            font-weight: bold;
+            padding: 12px;
+            border-radius: 4px;
+            background: #eef;
+            margin-top: 15px;
+            border-left: 5px solid #0066cc;
+        }
+        .progress-container {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            margin-top: 15px;
+            display: none;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 20px;
+            background-color: #4caf50;
+            border-radius: 4px;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            font-size: 12px;
+            transition: width 0.1s;
+        }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>XIAO nRF52840 アップデート2</h2>
-    <ol>
-        <li>XIAOをUSBケーブルでPCに接続します。</li>
-        <li>XIAOの「リセットボタン」を<b>素早く2回連続</b>でカチカチと押します（本体のLEDがゆっくり点滅を始め、PCに<b>「XIAO」というUSBメモリのようなドライブ</b>が出現すればDFUモード成功です）。</li>
-        <li>下のボタンを押し、ポップアップから対象のCOMポートを選択してください。</li>
-    </ol>
-    
-    <button id="connectBtn">デバイスを選択して書き込み開始</button>
-    <div id="status">ステータス: 待機中</div>
-</div>
+    <h1>XIAO nRF52840 Web Updater 01</h1>
+    <p>ブラウザのセキュリティ規則に基づき、2つのステップで安全にアップデートを行います。</p>
 
-<script>
-    const connectBtn = document.getElementById('connectBtn');
-    const statusDiv = document.getElementById('status');
+    <div class="card">
+        <!-- 事前準備: ファイル選択 -->
+        <div class="step">
+            <strong>📁 [準備] ファームウェアファイルの選択</strong><br><br>
+            <input type="file" id="uf2File" accept=".uf2">
+        </div>
 
-    // ★ここにArduino IDEが出力したHEXファイルの名前を正確に指定してください
-    // ※今回は例として「HIKIGANE_V3_RR.ino.hex」にしています。同じフォルダに置いてください。
-    const HEX_FILE_NAME = './HIKIGANE_V3_RR.ino.hex';
+        <!-- ステップ1: 1200bpsリセット -->
+        <div class="step">
+            <strong>1️⃣ [ステップ 1] XIAOをリセットする</strong>
+            <p style="font-size:13px; margin:5px 0; color:#666;">
+                接続画面が出たら、現在動いているXIAOのポートを選択してください。自動的にブートローダーモードへ切り替わります。
+            </p>
+            <button id="resetBtn">XIAOを選択してリセット</button>
+        </div>
 
-    // ログ出力用関数
-    function log(message) {
-        statusDiv.innerText = "ステータス:\n" + message;
-        console.log(message);
-    }
+        <!-- ステップ2: 115200bps書き込み -->
+        <div class="step">
+            <strong>2️⃣ [ステップ 2] UF2ファイルを書き込む</strong>
+            <p style="font-size:13px; margin:5px 0; color:#666;">
+                XIAOのランプがホタル点滅（ブートローダー起動状態）に変わったら押してください。再度ポート選択画面が出るので、新しく出現したポートを選びます。
+            </p>
+            <button id="writeBtn" disabled>ブートローダーポートに接続して書き込み</button>
+        </div>
 
-    // ブラウザがWeb Serialをサポートしているかチェック
-    if (!navigator.serial) {
-        connectBtn.disabled = true;
-        log("❌ お使いのブラウザはWeb Serialに対応していません。Google ChromeまたはMicrosoft Edgeを使用し、https:// でアクセスしてください。");
-    }
+        <!-- ステータス表示 -->
+        <div id="status">ステータス: UF2ファイルを選択してください。</div>
+        
+        <!-- プログレスバー -->
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar">0%</div>
+        </div>
+    </div>
 
-    connectBtn.addEventListener('click', async () => {
-        let port;
-        try {
-            log("1. サーバからHEXファイルを取得中...");
-            const response = await fetch(HEX_FILE_NAME);
-            if (!response.ok) throw new Error("HEXファイルが見つかりません。ファイル名が正しいか、同じフォルダにあるか確認してください。");
-            const hexText = await response.text();
-            
-            log("2. ブラウザの接続ポップアップをお待ちください...");
-            port = await navigator.serial.requestPort();
-            
-            // nRF52のブートローダーと通信するための一般的な設定 (115200bps)
-            await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: "none", flowControl: "none" });
-            log("3. XIAOに接続しました。データを転送中...");
+    <script>
+        const resetBtn = document.getElementById('resetBtn');
+        const writeBtn = document.getElementById('writeBtn');
+        const fileInput = document.getElementById('uf2File');
+        const statusDiv = document.getElementById('status');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
 
-            const writer = port.writable.getWriter();
-            const encoder = new TextEncoder();
-            
-            // HEXファイルを1行ずつ解析しながら送信
-            const lines = hexText.split(/\r?\n/);
-            let lineCount = 0;
+        let uf2Data = null;
 
-            for (let line of lines) {
-                line = line.trim();
-                if (line.length === 0) continue;
-
-                // シリアルポートに1行ずつ送信（最後に改行コードを付与）
-                const data = encoder.encode(line + "\r\n");
-                await writer.write(data);
-                
-                lineCount++;
-                if (lineCount % 50 === 0) {
-                    log(`転送中... (${lineCount} / ${lines.length} 行完了)`);
-                }
-                
-                // マイコン側の処理を待つためのごくわずかなウェイト（ミリ秒）
-                await new Promise(resolve => setTimeout(resolve, 5));
-            }
-
-            writer.releaseLock();
-            log("🎉 転送完了！マイコンが自動的に再起動します。USBケーブルを抜いて大丈夫です。");
-
-        } catch (error) {
-            log(`❌ エラーが発生しました:\n${error.message}`);
-        } finally {
-            if (port) {
-                try { await port.close(); } catch(e) {}
-            }
+        // ブラウザ互換性チェック
+        if (!('serial' in navigator)) {
+            statusDiv.innerText = "エラー: お使いのブラウザはWeb Serial APIに対応していません。Google ChromeまたはMicrosoft Edgeを使用してください。";
+            resetBtn.disabled = true;
+            writeBtn.disabled = true;
         }
-    });
-</script>
 
+        // ファイルが選択されたら案内を変更
+        fileInput.addEventListener('change', async () => {
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                const arrayBuffer = await file.arrayBuffer();
+                uf2Data = new Uint8Array(arrayBuffer);
+
+                if (uf2Data.length % 512 !== 0) {
+                    statusDiv.innerText = "❌ エラー: UF2ファイルのサイズが正しくありません(512の倍数以外)。";
+                    uf2Data = null;
+                    return;
+                }
+                statusDiv.innerText = "👍 ファイル読み込み完了。[ステップ 1] のボタンを押してください。";
+            }
+        });
+
+        // ==========================================
+        // 【STEP 1】 1200bps タッチ (リセットをかける)
+        // ==========================================
+        resetBtn.addEventListener('click', async () => {
+            if (!uf2Data) {
+                alert("先にUF2ファイルを選択してください。");
+                return;
+            }
+
+            try {
+                statusDiv.innerText = "シリアルポートの選択を待っています...";
+                const port = await navigator.serial.requestPort(); // ユーザー操作直後なので安全に開く
+                
+                statusDiv.innerText = "1200bps でリセット信号を送信中...";
+                await port.open({ baudRate: 1200 });
+                await port.close(); // 一瞬開いて閉じることで、XIAOがリセットを検知
+
+                statusDiv.innerText = "⏳ XIAOリセット成功。デバイスがホタル点滅（赤/緑）に変わったら、[ステップ 2] を押してください。";
+                writeBtn.disabled = false; // 書き込みボタンを有効化
+                resetBtn.disabled = true;
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerText = `❌ リセットエラー: ${error.message}`;
+            }
+        });
+
+        // ==========================================
+        // 【STEP 2】 115200bps でUF2ファイルを書き込み
+        // ==========================================
+        writeBtn.addEventListener('click', async () => {
+            if (!uf2Data) return;
+
+            try {
+                statusDiv.innerText = "ブートローダーポートの選択を待っています...";
+                // リセットによりデバイスID等が変わっている可能性があるため、再度ユーザーの手でポートを個別選択してもらう
+                const bootPort = await navigator.serial.requestPort(); 
+                
+                statusDiv.innerText = "書き込みポートを開いています(115200bps)...";
+                await bootPort.open({ baudRate: 115200 }); // ブートローダー書き込み用の標準速度
+
+                statusDiv.innerText = "アップデートファイルを書き込み中...";
+                progressContainer.style.display = 'block';
+                
+                const writer = bootPort.writable.getWriter();
+                const chunkSize = 512; // UF2規格のブロックサイズ
+                const totalChunks = uf2Data.length / chunkSize;
+
+                for (let i = 0; i < uf2Data.length; i += chunkSize) {
+                    const chunk = uf2Data.slice(i, i + chunkSize);
+                    await writer.write(chunk);
+
+                    // 進捗計算
+                    const currentChunk = (i / chunkSize) + 1;
+                    const percent = Math.round((currentChunk / totalChunks) * 100);
+                    progressBar.style.width = `${percent}%`;
+                    progressBar.innerText = `${percent}%`;
+                }
+
+                statusDiv.innerText = "書き込みを終了しています...";
+                await writer.close();
+                await bootPort.close();
+                
+                statusDiv.style.background = "#d4edda";
+                statusDiv.style.color = "#155724";
+                statusDiv.innerText = "✨ アップデートが完了しました！XIAOが自動起動します。";
+                
+                // ボタン状態を元に戻す
+                resetBtn.disabled = false;
+                writeBtn.disabled = true;
+
+            } catch (error) {
+                console.error(error);
+                statusDiv.style.background = "#f8d7da";
+                statusDiv.style.color = "#721c24";
+                statusDiv.innerText = `❌ 書き込みエラー: ${error.message}`;
+            }
+        });
+    </script>
 </body>
 </html>
