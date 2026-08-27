@@ -17,7 +17,12 @@
       border-radius: 12px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
       display: inline-block;
-      width: 400px;
+      /* 🔄 タイトルが1行で収まるように幅を400pxから500pxに広げました */
+      width: 500px; 
+    }
+    h1 {
+      /* 🆕 タイトル文字が絶対に折り返さない（改行しない）ようにする設定 */
+      white-space: nowrap; 
     }
     button {
       padding: 12px 24px;
@@ -29,7 +34,6 @@
       border-radius: 8px;
       cursor: pointer;
       width: 100%;
-      /* ボタン同士の間にすき間を作るために追加 */
       margin-top: 15px; 
     }
     button:hover {
