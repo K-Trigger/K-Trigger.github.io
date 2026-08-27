@@ -6,42 +6,51 @@
     <title>nRF52 DFU Web Installer</title>
     <style>
         body { font-family: system-ui, sans-serif; text-align: center; padding: 50px; background-color: #f5f5f7; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: inline-block; width: 400px; }
-        /* ライブラリがボタンを正しくラップできるように表示を調整 */
-        nrf-web-tools-button { display: inline-block; margin: 20px auto; }
-        button { padding: 12px 24px; font-size: 16px; font-weight: bold; background-color: #0071e3; color: white; border: none; border-radius: 8px; cursor: pointer; }
-        button:hover { background-color: #0077ed; }
-        #error-log { margin-top: 20px; padding: 12px; border-radius: 8px; background-color: #ffeef0; color: #d9383a; font-size: 14px; text-align: left; display: none; border: 1px solid #fdb8c0; white-space: pre-wrap; }
+        /* 
+          カード全体を大きなボタンとして機能させるため、
+          ライブラリのカスタム要素に直接サイズとボタン風のデザインを適用します
+        */
+        nrf-web-tools-button {
+            display: inline-block;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            width: 350px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+        nrf-web-tools-button:hover {
+            border-color: #0071e3;
+        }
+        h1 { color: #1d1d1f; margin-top: 0; }
+        p { color: #86868b; }
+        .btn-text {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: #0071e3;
+            color: white;
+            border-radius: 8px;
+        }
     </style>
-    <!-- unpkgからnrf-web-toolsのスクリプトをロード -->
+    <!-- ライブラリの読み込み -->
     <script type="module" src="https://unpkg.com"></script>
 </head>
 <body>
 
-    <div class="card">
-        <!-- バージョン識別ナンバー（Rev.4） -->
-        <h1>nRF52 Web アップデート (Rev.4)</h1>
-        <p>デバイスを接続し、下のボタンを押してください。</p>
-
-        <!-- 指定のZIPファイルをセット（干渉を避けるためidや独自のclickイベントを撤廃） -->
-        <nrf-web-tools-button package="./HIKIGANEV3.1_RT.zip">
-            <button slot="activate">ファームウェアを書き込む</button>
-        </nrf-web-tools-button>
-
-        <!-- エラーが発生した時だけ表示するボックス -->
-        <div id="error-log"></div>
-    </div>
-
-    <script>
-        const errorLog = document.getElementById('error-log');
-        const nrfButton = document.querySelector('nrf-web-tools-button');
-
-        // エラー発生時のみログを表示する
-        nrfButton.addEventListener('error', (e) => {
-            errorLog.innerText = `【DFU書き込みエラー】\n${e.detail?.message || 'COMポートのオープンに失敗したか、通信が遮断されました。'}`;
-            errorLog.style.display = 'block';
-        });
-    </script>
+    <!-- 
+      HTMLのボタン要素(<button>)を挟まず、この要素自体をクリックさせます。
+      これにより、イベントの競合による不作動を完全に防ぎます。
+    -->
+    <nrf-web-tools-button package="./HIKIGANEV3.1_RT.zip">
+        <h1>nRF52 Web アップデート (Rev.5)</h1>
+        <p>デバイスを接続し、このカード内のどこでもクリックしてください。</p>
+        <div class="btn-text">ファームウェアを書き込む</div>
+    </nrf-web-tools-button>
 
 </body>
 </html>
