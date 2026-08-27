@@ -3,208 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 Web DFU Uploader</title>
+    <title>nRF52 DFU Web Installer</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
-        h1 { color: #0066cc; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        .card { background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-top: 20px; }
-        .step-box { background: white; border: 1px solid #e0e0e0; border-radius: 6px; padding: 15px; margin-bottom: 15px; }
-        button { background-color: #0066cc; color: white; border: none; padding: 12px 24px; font-size: 15px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 10px; }
-        button:hover { background-color: #0052a3; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #status { font-weight: bold; padding: 12px; border-radius: 4px; background: #eef; margin-top: 15px; border-left: 5px solid #0066cc; white-space: pre-wrap; }
-        .progress-container { width: 100%; background-color: #e0e0e0; border-radius: 4px; margin-top: 15px; display: none; }
-        .progress-bar { width: 0%; height: 20px; background-color: #28a745; border-radius: 4px; text-align: center; line-height: 20px; color: white; font-size: 12px; }
+        body {
+            font-family: system-ui, sans-serif;
+            text-align: center;
+            padding: 50px;
+            background-color: #f5f5f7;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: inline-block;
+        }
+        h1 { color: #1d1d1f; }
+        p { color: #86868b; }
+        /* 書き込みボタンのスタイル */
+        nrf-web-tools-button {
+            display: block;
+            margin: 20px auto;
+        }
     </style>
+    <!-- nrf-web-toolsのJavaScriptライブラリを読み込み -->
+    <script type="module" src="https://unpkg.com"></script>
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web DFU Uploader 13</h1>
-    <p>XIAOとシリアルで「双方向の対話」を行い、正規の手順でフラッシュを確定・自動再起動させます。</p>
-
     <div class="card">
-        <div class="step-box">
-            <strong>📁 [準備] 用意した .uf2 ファイルの選択</strong><br><br>
-            <input type="file" id="uf2FileInput" accept=".uf2">
-        </div>
+        <h1>nRF52 Web アップデート　01</h1>
+        <p>デバイスをPCに接続し、下のボタンを押してファームウェアを書き込んでください。</p>
 
-        <div class="step-box">
-            <strong>1️⃣ [ステップ 1] XIAOをリセットモードにする</strong>
-            <button id="resetBtn" disabled>XIAOを接続してリセット</button>
-        </div>
-
-        <div class="step-box">
-            <strong>2️⃣ [ステップ 2] ファームウェアを書き込む</strong>
-            <button id="flashBtn" disabled>ブートローダーに接続して書き込み</button>
-        </div>
-
-        <div id="status">ステータス: .uf2 ファイルを選択してください。</div>
-        
-        <div class="progress-container" id="progressContainer">
-            <div class="progress-bar" id="progressBar">0%</div>
-        </div>
+        <!-- 
+          package属性に、Arduino IDEが出力したZIPファイルのパスを指定します。
+          ファイル名が異なる場合は、下の「firmware.zip」を実際のファイル名に書き換えてください。
+        -->
+        <nrf-web-tools-button package="./firmware.zip">
+            <button slot="activate">ファームウェアを書き込む</button>
+        </nrf-web-tools-button>
     </div>
 
-    <script>
-        const uf2FileInput = document.getElementById('uf2FileInput');
-        const resetBtn = document.getElementById('resetBtn');
-        const flashBtn = document.getElementById('flashBtn');
-        const statusDiv = document.getElementById('status');
-        const progressContainer = document.getElementById('progressContainer');
-        const progressBar = document.getElementById('progressBar');
-
-        let rawUf2Data = null;
-
-        // CRC32計算（整合性検証用）
-        function crc32(data) {
-            let crc = 0xFFFFFFFF;
-            for (let i = 0; i < data.length; i++) {
-                crc ^= data[i];
-                for (let j = 0; j < 8; j++) {
-                    crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
-                }
-            }
-            return (crc ^ 0xFFFFFFFF) >>> 0;
-        }
-
-        uf2FileInput.addEventListener('change', async (e) => {
-            const files = e.target.files;
-            if (!files || files.length === 0) return;
-            try {
-                const arrayBuffer = await files[0].arrayBuffer();
-                rawUf2Data = new Uint8Array(arrayBuffer);
-                statusDiv.innerText = `👍 .uf2 ファイルを読み込みました。\n[ステップ 1] を押してください。`;
-                resetBtn.disabled = false;
-            } catch (err) {
-                statusDiv.innerText = `❌ エラー: ${err.message}`;
-            }
-        });
-
-        resetBtn.addEventListener('click', async () => {
-            try {
-                const port = await navigator.serial.requestPort();
-                await port.open({ baudRate: 1200 });
-                await port.close(); 
-                statusDiv.innerText = "⏳ リセット成功！ホタル点滅に変わったら [ステップ 2] を押してください。";
-                flashBtn.disabled = false;
-                resetBtn.disabled = true;
-            } catch (err) {
-                statusDiv.innerText = `❌ リセットエラー: ${err.message}`;
-            }
-        });
-
-        flashBtn.addEventListener('click', async () => {
-            if (!rawUf2Data) return;
-            let dfuPort = null;
-            try {
-                dfuPort = await navigator.serial.requestPort();
-                await dfuPort.open({ baudRate: 115200 });
-                
-                const writer = dfuPort.writable.getWriter();
-                const reader = dfuPort.readable.getReader();
-                
-                // 💡【コア修正】XIAOと双方向で対話しながらパケットを送り、応答(ACK)を待つ関数
-                async function sendPacket(opCode, payload = [], expectResponse = false) {
-                    const raw = [opCode, ...payload];
-                    const slip = [0xC0];
-                    for (const b of raw) {
-                        if (b === 0xC0) { slip.push(0xDB); slip.push(0xDC); }
-                        else if (b === 0xDB) { slip.push(0xDB); slip.push(0xDD); }
-                        else { slip.push(b); }
-                    }
-                    slip.push(0xC0);
-                    
-                    await writer.write(new Uint8Array(slip));
-
-                    // 応答が必要なコマンド、または定期同期の時はXIAOからの返事を待つ
-                    if (expectResponse) {
-                        // タイムアウト付きの簡易的な読み込み待ち
-                        let retries = 20;
-                        while (retries > 0) {
-                            const { value, done } = await Promise.race([
-                                reader.read(),
-                                new Promise(resolve => setTimeout(() => resolve({ value: null, done: false }), 50))
-                            ]);
-                            if (value && value.length > 0) {
-                                // 応答パケットの先頭に0x60(Response OpCode)があり、成功ステータス(0x01)が含まれているかチェック
-                                return value;
-                            }
-                            retries--;
-                        }
-                    }
-                    // 通常コマンドは短いウェイトを入れてバッファを保護
-                    await new Promise(r => setTimeout(r, 10));
-                    return null;
-                }
-
-                statusDiv.innerText = "UF2からバイナリデータを抽出中...";
-                progressContainer.style.display = 'block';
-
-                let purePayloads = [];
-                for (let i = 0; i < rawUf2Data.length; i += 512) {
-                    const blockSize = rawUf2Data[i + 32] | (rawUf2Data[i + 33] << 8);
-                    if (blockSize > 0 && blockSize <= 256) {
-                        purePayloads.push(...Array.from(rawUf2Data.slice(i + 52, i + 52 + blockSize)));
-                    }
-                }
-                const binaryData = new Uint8Array(purePayloads);
-
-                const binLen = binaryData.length;
-                const binCrc = crc32(binaryData);
-                
-                // 正確な署名・検証メタデータ(Init Packet)の作成
-                const initPacketStruct = new Uint8Array([
-                    0x12, 0x01, 0x0A, 0x44, 0x0A, 0x02, 0x08, 0x01, 
-                    0x12, 0x3A, 0x08, 0x01, 0x12, 0x36, 0x08, 0xff, 0xff, 0xff, 0xff, 0x0f,
-                    binLen & 0xFF, (binLen >> 8) & 0xFF, (binLen >> 16) & 0xFF, (binLen >> 24) & 0xFF,
-                    binCrc & 0xFF, (binCrc >> 8) & 0xFF, (binCrc >> 16) & 0xFF, (binCrc >> 24) & 0xFF
-                ]);
-
-                // 1️⃣ 設定書（Init Packet）をXIAOへ送信し、正しく受理されたかの返事(ACK)を待つ
-                statusDiv.innerText = "セキュリティ検証中 (設定書の同期)...";
-                const datLen = initPacketStruct.length;
-                await sendPacket(0x01, [0x01, datLen & 0xFF, (datLen >> 8) & 0xFF, 0, 0, 0, 0, 0], true); // Create
-                await sendPacket(0x03, Array.from(initPacketStruct)); // Data
-                await sendPacket(0x04, [], true); // Execute (ここでXIAOの検証完了の合図をしっかりと待つ)
-
-                // 2️⃣ ファームウェア本体（App）の送信開始の合図
-                statusDiv.innerText = "検証通過。書き込みセッションを構築中...";
-                await sendPacket(0x01, [0x02, binLen & 0xFF, (binLen >> 8) & 0xFF, (binLen >> 16) & 0xFF, (binLen >> 24) & 0xFF, 0, 0, 0], true);
-
-                // 3️⃣ データを64バイトずつ送信（溢れないよう、一定間隔でチェックサム同期を挟む）
-                const chunkSize = 64;
-                let bytesSent = 0;
-
-                for (let i = 0; i < binaryData.length; i += chunkSize) {
-                    const chunk = binaryData.slice(i, i + chunkSize);
-                    await sendPacket(0x03, Array.from(chunk));
-                    bytesSent += chunk.length;
-
-                    // 💡【最重要の見落とし修正】
-                    // 256バイト送るごとに、XIAOへ「ここまで正しく届いてる？」という確認(OpCode: 0x07 = Get Checksum)を送り、
-                    // XIAOからの「バッファにしっかり収まったよ」という返事を受け取ってから次のデータを送る（バッファ詰まり防止）
-                    if (bytesSent % 256 === 0 || i + chunkSize >= binaryData.length) {
-                        await sendPacket(0x07, [], true); 
-                    }
-
-                    const percent = Math.round(((i + chunk.length) / binaryData.length) * 100);
-                    progressBar.style.width = `${percent}%`;
-                    progressBar.innerText = `${percent}%`;
-                    statusDiv.innerText = `フラッシュに書き込み中... (${percent}%)`;
-                }
-
-                // 4️⃣ すべてが完璧にフラッシュに書き込まれた事を確認し、最終確定・再起動コマンド
-                statusDiv.innerText = "すべての書き込みを確認。再起動コマンドを送信中...";
-                await sendPacket(0x04, [], true); // Execute App (XIAOが起動OKの返事を出して再起動する)
-
-                // 終了処理
-                writer.releaseLock();
-                reader.releaseLock();
-                await dfuPort.close();
-                
-                statusDiv.style.background = "#d4edda";
-                statusDiv.style.color = "#155724";
-                statusDiv.innerText = "✨ アップデート大成功！\nXIAOがファームウェアを正常と認め、自動起動しました！";
-
-            } catch (err) {
-                console.error(err);
+</body>
+</html>
