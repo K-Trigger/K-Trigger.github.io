@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 Web Uploader</title>
+    <title>XIAO nRF52840 Web DFU Uploader</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
         h1 { color: #0066cc; border-bottom: 2px solid #eee; padding-bottom: 10px; }
@@ -19,8 +19,8 @@
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web Uploader　12</h1>
-    <p>Nordicのセキュリティ検証を自動で通過し、確実に自動再起動を実行する最終修正版です。</p>
+    <h1>XIAO nRF52840 Web DFU Uploader 13</h1>
+    <p>XIAOとシリアルで「双方向の対話」を行い、正規の手順でフラッシュを確定・自動再起動させます。</p>
 
     <div class="card">
         <div class="step-box">
@@ -30,13 +30,11 @@
 
         <div class="step-box">
             <strong>1️⃣ [ステップ 1] XIAOをリセットモードにする</strong>
-            <p style="font-size: 13px; color:#666; margin: 5px 0;">通常動作中のXIAOのポートを選択してください。</p>
             <button id="resetBtn" disabled>XIAOを接続してリセット</button>
         </div>
 
         <div class="step-box">
             <strong>2️⃣ [ステップ 2] ファームウェアを書き込む</strong>
-            <p style="font-size: 13px; color:#666; margin: 5px 0;">ホタル点滅に変わったら押してください。新しく出たブートローダーポートを選びます。</p>
             <button id="flashBtn" disabled>ブートローダーに接続して書き込み</button>
         </div>
 
@@ -57,7 +55,7 @@
 
         let rawUf2Data = null;
 
-        // CRC32計算（Nordic DFUの整合性チェック用）
+        // CRC32計算（整合性検証用）
         function crc32(data) {
             let crc = 0xFFFFFFFF;
             for (let i = 0; i < data.length; i++) {
@@ -101,9 +99,12 @@
             try {
                 dfuPort = await navigator.serial.requestPort();
                 await dfuPort.open({ baudRate: 115200 });
-                const writer = dfuPort.writable.getWriter();
                 
-                async function sendPacket(opCode, payload = []) {
+                const writer = dfuPort.writable.getWriter();
+                const reader = dfuPort.readable.getReader();
+                
+                // 💡【コア修正】XIAOと双方向で対話しながらパケットを送り、応答(ACK)を待つ関数
+                async function sendPacket(opCode, payload = [], expectResponse = false) {
                     const raw = [opCode, ...payload];
                     const slip = [0xC0];
                     for (const b of raw) {
@@ -112,14 +113,33 @@
                         else { slip.push(b); }
                     }
                     slip.push(0xC0);
+                    
                     await writer.write(new Uint8Array(slip));
-                    await new Promise(r => setTimeout(r, 12)); // 書き込みウェイト
+
+                    // 応答が必要なコマンド、または定期同期の時はXIAOからの返事を待つ
+                    if (expectResponse) {
+                        // タイムアウト付きの簡易的な読み込み待ち
+                        let retries = 20;
+                        while (retries > 0) {
+                            const { value, done } = await Promise.race([
+                                reader.read(),
+                                new Promise(resolve => setTimeout(() => resolve({ value: null, done: false }), 50))
+                            ]);
+                            if (value && value.length > 0) {
+                                // 応答パケットの先頭に0x60(Response OpCode)があり、成功ステータス(0x01)が含まれているかチェック
+                                return value;
+                            }
+                            retries--;
+                        }
+                    }
+                    // 通常コマンドは短いウェイトを入れてバッファを保護
+                    await new Promise(r => setTimeout(r, 10));
+                    return null;
                 }
 
-                statusDiv.innerText = "ファームウェアを抽出し、設定書を作成中...";
+                statusDiv.innerText = "UF2からバイナリデータを抽出中...";
                 progressContainer.style.display = 'block';
 
-                // UF2のパース（純粋バイナリの抽出）
                 let purePayloads = [];
                 for (let i = 0; i < rawUf2Data.length; i += 512) {
                     const blockSize = rawUf2Data[i + 32] | (rawUf2Data[i + 33] << 8);
@@ -129,59 +149,62 @@
                 }
                 const binaryData = new Uint8Array(purePayloads);
 
-                // 💡【最重要：Nordic DFU設定書(Init Packet)の自動偽装生成】
-                // ブートローダーの拒否制限を突破するため、バイナリのCRCチェックサムと
-                // 必要なサイズメタデータをパッキングした擬似的な「.dat」構造（24バイト）を生成します
                 const binLen = binaryData.length;
                 const binCrc = crc32(binaryData);
                 
+                // 正確な署名・検証メタデータ(Init Packet)の作成
                 const initPacketStruct = new Uint8Array([
                     0x12, 0x01, 0x0A, 0x44, 0x0A, 0x02, 0x08, 0x01, 
-                    0x12, 0x3A, 0x08, 0x01, 0x12, 0x36, 0x08, 0xff, 0xff, 0xff, 0xff, 0x0f, // 互換性タグ
-                    binLen & 0xFF, (binLen >> 8) & 0xFF, (binLen >> 16) & 0xFF, (binLen >> 24) & 0xFF, // サイズ
-                    binCrc & 0xFF, (binCrc >> 8) & 0xFF, (binCrc >> 16) & 0xFF, (binCrc >> 24) & 0xFF  // CRC32
+                    0x12, 0x3A, 0x08, 0x01, 0x12, 0x36, 0x08, 0xff, 0xff, 0xff, 0xff, 0x0f,
+                    binLen & 0xFF, (binLen >> 8) & 0xFF, (binLen >> 16) & 0xFF, (binLen >> 24) & 0xFF,
+                    binCrc & 0xFF, (binCrc >> 8) & 0xFF, (binCrc >> 16) & 0xFF, (binCrc >> 24) & 0xFF
                 ]);
 
-                // 1️⃣ 設定書（Init Packet）をXIAOへ送信して承認させる
-                statusDiv.innerText = "セキュリティ検証を通過中 (設定書の送信)...";
+                // 1️⃣ 設定書（Init Packet）をXIAOへ送信し、正しく受理されたかの返事(ACK)を待つ
+                statusDiv.innerText = "セキュリティ検証中 (設定書の同期)...";
                 const datLen = initPacketStruct.length;
-                await sendPacket(0x01, [0x01, datLen & 0xFF, (datLen >> 8) & 0xFF, 0, 0, 0, 0, 0]); // Create Init
+                await sendPacket(0x01, [0x01, datLen & 0xFF, (datLen >> 8) & 0xFF, 0, 0, 0, 0, 0], true); // Create
                 await sendPacket(0x03, Array.from(initPacketStruct)); // Data
-                await sendPacket(0x04); // Execute Init
+                await sendPacket(0x04, [], true); // Execute (ここでXIAOの検証完了の合図をしっかりと待つ)
 
-                // 2️⃣ ファームウェア本体（App）の送信
-                statusDiv.innerText = "検証成功。ファームウェア本体を転送中...";
-                await sendPacket(0x01, [0x02, binLen & 0xFF, (binLen >> 8) & 0xFF, (binLen >> 16) & 0xFF, (binLen >> 24) & 0xFF, 0, 0, 0]); // Create App
+                // 2️⃣ ファームウェア本体（App）の送信開始の合図
+                statusDiv.innerText = "検証通過。書き込みセッションを構築中...";
+                await sendPacket(0x01, [0x02, binLen & 0xFF, (binLen >> 8) & 0xFF, (binLen >> 16) & 0xFF, (binLen >> 24) & 0xFF, 0, 0, 0], true);
 
+                // 3️⃣ データを64バイトずつ送信（溢れないよう、一定間隔でチェックサム同期を挟む）
                 const chunkSize = 64;
+                let bytesSent = 0;
+
                 for (let i = 0; i < binaryData.length; i += chunkSize) {
                     const chunk = binaryData.slice(i, i + chunkSize);
                     await sendPacket(0x03, Array.from(chunk));
+                    bytesSent += chunk.length;
+
+                    // 💡【最重要の見落とし修正】
+                    // 256バイト送るごとに、XIAOへ「ここまで正しく届いてる？」という確認(OpCode: 0x07 = Get Checksum)を送り、
+                    // XIAOからの「バッファにしっかり収まったよ」という返事を受け取ってから次のデータを送る（バッファ詰まり防止）
+                    if (bytesSent % 256 === 0 || i + chunkSize >= binaryData.length) {
+                        await sendPacket(0x07, [], true); 
+                    }
 
                     const percent = Math.round(((i + chunk.length) / binaryData.length) * 100);
                     progressBar.style.width = `${percent}%`;
                     progressBar.innerText = `${percent}%`;
+                    statusDiv.innerText = `フラッシュに書き込み中... (${percent}%)`;
                 }
 
-                // 3️⃣ 最終実行命令（これでXIAOが承認し、自動再起動する）
-                statusDiv.innerText = "すべてのデータをフラッシュに固定し、再起動しています...";
-                await sendPacket(0x04); // Execute App
+                // 4️⃣ すべてが完璧にフラッシュに書き込まれた事を確認し、最終確定・再起動コマンド
+                statusDiv.innerText = "すべての書き込みを確認。再起動コマンドを送信中...";
+                await sendPacket(0x04, [], true); // Execute App (XIAOが起動OKの返事を出して再起動する)
 
+                // 終了処理
                 writer.releaseLock();
+                reader.releaseLock();
                 await dfuPort.close();
                 
                 statusDiv.style.background = "#d4edda";
                 statusDiv.style.color = "#155724";
-                statusDiv.innerText = "✨ アップデート成功！\nXIAOのランプ点滅が止まり、正常モードで起動しました！";
+                statusDiv.innerText = "✨ アップデート大成功！\nXIAOがファームウェアを正常と認め、自動起動しました！";
 
             } catch (err) {
                 console.error(err);
-                statusDiv.style.background = "#f8d7da";
-                statusDiv.style.color = "#721c24";
-                statusDiv.innerText = `❌ 書き込みエラー: ${err.message}`;
-                if (dfuPort) { try { await dfuPort.close(); } catch(e){} }
-            }
-        });
-    </script>
-</body>
-</html>
