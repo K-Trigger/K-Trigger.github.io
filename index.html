@@ -17,32 +17,87 @@
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             display: inline-block;
+            max-width: 450px;
+            width: 100%;
         }
         h1 { color: #1d1d1f; }
         p { color: #86868b; }
-        /* 書き込みボタンのスタイル */
         nrf-web-tools-button {
             display: block;
             margin: 20px auto;
         }
+        /* エラー表示エリアのスタイル */
+        #error-message {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            background-color: #ffeef0;
+            color: #d9383a;
+            font-size: 14px;
+            text-align: left;
+            display: none;
+            border: 1px solid #fdb8c0;
+            white-space: pre-wrap;
+        }
     </style>
-    <!-- nrf-web-toolsのJavaScriptライブラリを読み込み -->
     <script type="module" src="https://unpkg.com"></script>
 </head>
 <body>
 
     <div class="card">
-        <h1>nRF52 Web アップデート　02</h1>
-        <p>デバイスをPCに接続し、下のボタンを押してファームウェアを書き込んでください。</p>
+        <h1>nRF52 Web アップデート 03</h1>
+        <p>デバイスを接続し、下のボタンを押してください。</p>
 
-        <!-- 
-          package属性に、Arduino IDEが出力したZIPファイルのパスを指定します。
-          ファイル名が異なる場合は、下の「firmware.zip」を実際のファイル名に書き換えてください。
-        -->
-        <nrf-web-tools-button package="./HIKIGANEV3.1_RT.zip">
+        <!-- Arduino IDEが出力したZIPのパスを指定 -->
+        <nrf-web-tools-button id="dfu-button" package="./firmware.zip">
             <button slot="activate">ファームウェアを書き込む</button>
         </nrf-web-tools-button>
+
+        <!-- エラー出力用のボックス -->
+        <div id="error-message"></div>
     </div>
+
+    <script>
+        const errorDiv = document.getElementById('error-message');
+        const dfuButton = document.getElementById('dfu-button');
+
+        function showError(msg) {
+            errorDiv.innerText = msg;
+            errorDiv.style.display = 'block';
+        }
+
+        // 1. ページ読み込み時にセキュリティー環境とZIPファイルの存在をチェック
+        window.addEventListener('DOMContentLoaded', async () => {
+            // HTTPS接続チェック（Web Serialの必須要件）
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                showError('【セキュリティーエラー】\nWeb Serial APIは「https://」のURLでしか動作しません。GitHub Pagesに公開してからお試しください。');
+                return;
+            }
+
+            // Web Serial API自体に対応しているか
+            if (!navigator.serial) {
+                showError('【ブラウザ非対応】\nお使いのブラウザはWeb Serialに対応していません。PC版のGoogle ChromeまたはMicrosoft Edgeを使用してください。');
+                return;
+            }
+
+            // ZIPファイルの存在チェック
+            const zipUrl = dfuButton.getAttribute('package');
+            try {
+                const response = await fetch(zipUrl, { method: 'HEAD' });
+                if (!response.ok) {
+                    showError(`【ファイル未検出】\n指定されたZIPファイル（${zipUrl}）が見つかりません。パスやファイル名が正しいか、アップロードされているか確認してください。`);
+                }
+            } catch (err) {
+                showError(`【ファイルアクセスエラー】\nZIPファイルの読み込みに失敗しました。\n${err.message}`);
+            }
+        });
+
+        // 2. ボタン操作時のCOMポートや通信のエラーをキャッチ
+        dfuButton.addEventListener('error', (event) => {
+            console.error('DFU Error:', event);
+            showError(`【通信エラーが発生しました】\n原因の可能性があります：\n・他のアプリ（Arduino IDEのモニタなど）がCOMポートを開いたままにしている\n・書き込みモード（DFUモード）になっていない\n・USBケーブルがデータ通信に対応していない`);
+        });
+    </script>
 
 </body>
 </html>
