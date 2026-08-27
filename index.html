@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firmware Installer Home</title>
+    <style>
+        body { font-family: system-ui, sans-serif; text-align: center; padding: 50px; background-color: #f5f5f7; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: inline-block; width: 400px; }
+        button { padding: 12px 24px; font-size: 16px; font-weight: bold; background-color: #0071e3; color: white; border: none; border-radius: 8px; cursor: pointer; width: 100%; }
+        button:hover { background-color: #0077ed; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>Web Firmware Installer (Rev.13)</h1>
+        <p>Click the button below to open the HIKIGANE V3.1 RT flashing tool.</p>
+
+        <!-- hikiganev3.1rt.html へ移動するボタン -->
+        <button id="open-tool-btn">Go to Flashing Tool</button>
+    </div>
+
+    <script>
+        document.getElementById('open-tool-btn').addEventListener('click', () => {
+            // 別ページに切り替える処理
+            window.location.href = './hikiganev3.1rt.html';
+        });
+    </script>
+</body>
+</html>
