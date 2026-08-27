@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XIAO nRF52840 Web Uploader</title>
     
-    <!-- 💡 ライブラリの読み込み元を最も安定しているGitHub公式CDNに変更 -->
+    <!-- 必要なライブラリ群 -->
     <script src="https://cloudflare.com"></script>
     <script src="https://jsdelivr.net"></script>
     
@@ -24,8 +24,8 @@
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web Flash Tool　05</h1>
-    <p>ライブラリの読み込みエラーを修正したバージョンです。2つのステップで確実に実行します。</p>
+    <h1>XIAO nRF52840 Web Flash Tool　06</h1>
+    <p>ライブラリの正しい初期化ルールを適用したバージョンです。2つのステップで確実に実行します。</p>
 
     <div class="card">
         <!-- ファイル選択 -->
@@ -66,17 +66,14 @@
 
         let zipDataBuffer = null;
 
-        // 💡 画面を読み込んだ時点でライブラリが正しく存在しているかチェックする安全機構を追加
+        // 画面読み込み時にライブラリの存在をチェックする安全機構
         window.addEventListener('load', () => {
-            // ライブラリによってグローバル名が小文字の nrfutil だったり大文字の Nrfutil だったりするため、どちらでも動くように統一
-            window.nrfutilActive = window.nrfutil || window.Nrfutil;
-            
-            if (window.nrfutilActive) {
+            if (window.Nrfutil) {
                 statusDiv.innerText = "ステータス: 準備完了。DFU用ZIPファイルを選択してください。";
             } else {
                 statusDiv.style.background = "#f8d7da";
                 statusDiv.style.color = "#721c24";
-                statusDiv.innerText = "❌ エラー: 書き込み用ライブラリの読み込みに失敗しました。\nネット接続を確認するか、ブラウザをリロードしてください。";
+                statusDiv.innerText = "❌ エラー: 書き込み用ライブラリ(Nrfutil)の読み込みに失敗しました。\nネット接続を確認するか、ブラウザをリロードしてください。";
             }
         });
 
@@ -118,7 +115,7 @@
             }
         });
 
-        // 2️⃣ 【STEP 2】 nrfutilを使用した実際の書き込み
+        // 2️⃣ 【STEP 2】 正しいAPI構造に修正した書き込み処理
         flashBtn.addEventListener('click', async () => {
             if (!zipDataBuffer) return;
             
@@ -126,13 +123,22 @@
                 statusDiv.innerText = "新しく出現した「ブートローダーのCOMポート」を選択してください...";
                 const dfuPort = await navigator.serial.requestPort();
                 
-                statusDiv.innerText = "nrfutilによる書き込みを開始します...";
+                statusDiv.innerText = "書き込みオブジェクトを初期化中...";
                 progressContainer.style.display = 'block';
                 progressBar.style.width = '0%';
                 progressBar.innerText = '0%';
+
+                // 💡【コア修正】nrfutil-jsライブラリの正しいブラウザ向けAPI呼び出し手順
+                // 1. まず Web Serial ポートを引数にして、Dfuトランスポートを生成する
+                const transport = new window.Nrfutil.WebSerialTransport(dfuPort);
                 
-                // 💡 安全に特定したライブラリのオブジェクトを使って実行
-                await window.nrfutilActive.flashDFUPackage(dfuPort, zipDataBuffer, (progress) => {
+                // 2. Dfu処理を行う本体（クラス）を新しく生成（インスタンス化）する
+                const dfu = new window.Nrfutil.Dfu(transport);
+
+                statusDiv.innerText = "nrfutilによる書き込みを開始します...";
+                
+                // 3. 生成したインスタンスに対して、ZIPデータと進捗コールバックを渡して実行
+                await dfu.performDFU(zipDataBuffer, (progress) => {
                     const percent = Math.round(progress * 100);
                     progressBar.style.width = `${percent}%`;
                     progressBar.innerText = `${percent}%`;
