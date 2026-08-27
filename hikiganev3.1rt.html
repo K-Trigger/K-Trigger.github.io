@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,58 +12,58 @@
         #status-area { margin-top: 20px; padding: 12px; border-radius: 8px; background-color: #f4f4f9; color: #333; font-size: 14px; text-align: left; display: block; border: 1px solid #ddd; white-space: pre-wrap; }
     </style>
 
-    <!-- 1. 同じフォルダ（ローカル）に落としたJSを順番通りに確実に読み込む -->
+    <!-- Load local scripts -->
     <script src="./jszip.min.js"></script>
     <script src="./nrf_web_tools.js"></script>
 </head>
 <body>
 
     <div class="card">
-        <h1>nRF52 Web アップデート (Rev.11)</h1>
-        <p>デバイスを接続し、下のボタンを押してください。</p>
+        <h1>nRF52 Web Updater (Rev.12)</h1>
+        <p>Connect your device and click the button below.</p>
 
-        <!-- 公式ライブラリがクリックイベントを自動検知してWeb Serialを起動するボタン -->
-        <button id="install-btn">ファームウェアを書き込む</button>
+        <!-- Trigger button for Web Serial DFU -->
+        <button id="install-btn">Flash Firmware</button>
 
-        <!-- 進行状況やエラーがライブラリから自動出力される標準ログエリア -->
-        <div id="status-area">システム待機中...</div>
+        <!-- System status and error log area -->
+        <div id="status-area">System standby...</div>
     </div>
 
     <script>
         const statusArea = document.getElementById('status-area');
         const installBtn = document.getElementById('install-btn');
 
-        // 起動前のブラウザ環境の最終セルフチェック
+        // Browser environment and security check
         window.addEventListener('DOMContentLoaded', () => {
             if (!navigator.serial) {
-                statusArea.innerText = "【ブラウザエラー】お使いのブラウザはWeb Serial通信に対応していません。PC版のGoogle Chrome、またはMicrosoft Edgeで開いてください。";
+                statusArea.innerText = "[Browser Error]\nYour browser does not support Web Serial. Please use the desktop version of Google Chrome or Microsoft Edge.";
                 statusArea.style.backgroundColor = "#ffeef0";
                 installBtn.disabled = true;
                 return;
             }
             if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-                statusArea.innerText = "【セキュリティエラー】GitHub Pagesなどの「https://」から始まるURLでアクセスしないと、ブラウザがポート選択画面を強制遮断します。";
+                statusArea.innerText = "[Security Error]\nWeb Serial is blocked unless this page is served over HTTPS (e.g., GitHub Pages) or localhost.";
                 statusArea.style.backgroundColor = "#ffeef0";
                 installBtn.disabled = true;
                 return;
             }
 
-            // 2. 公式ライブラリ「NrfWebTools」のクラスを安全に初期化
+            // Initialize the official NrfWebTools class
             try {
                 if (typeof NrfWebTools === 'undefined') {
-                    throw new Error("nrf_web_tools.js が正しく読み込まれていません。index.htmlと同じ場所にファイルを保存したか確認してください。");
+                    throw new Error("nrf_web_tools.js is not loaded correctly. Make sure it is placed in the same folder as index.html.");
                 }
 
-                // 公式の正しい初期化：第一引数にボタン、第二引主にZIPのパス（更新ナンバー付き）を渡す
+                // Bind button and target ZIP file with a cache buster
                 new NrfWebTools(
                     installBtn,
                     './HIKIGANEV3.1_RT.zip?v=' + Date.now()
                 );
                 
-                statusArea.innerText = "準備完了：ボタンを押すと、ブラウザがシリアルポートの選択ポップアップを表示します。";
+                statusArea.innerText = "Ready: Click the button to select your serial port.";
                 statusArea.style.backgroundColor = "#e6f4ea";
             } catch (err) {
-                statusArea.innerText = `【システムエラー】\n${err.message}`;
+                statusArea.innerText = `[System Error]\n${err.message}`;
                 statusArea.style.backgroundColor = "#ffeef0";
                 installBtn.disabled = true;
             }
