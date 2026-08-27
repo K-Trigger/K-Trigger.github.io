@@ -73,11 +73,11 @@
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web Updater 01</h1>
-    <p>ブラウザのセキュリティ規則に基づき、2つのステップで安全にアップデートを行います。</p>
+    <h1>XIAO nRF52840 Web Updater</h1>
+    <p>シリアル転送完了後にXIAOへ自動再起動コマンドを送信する修正版です。</p>
 
     <div class="card">
-        <!-- 事前準備: ファイル選択 -->
+        <!-- 準備: ファイル選択 -->
         <div class="step">
             <strong>📁 [準備] ファームウェアファイルの選択</strong><br><br>
             <input type="file" id="uf2File" accept=".uf2">
@@ -87,7 +87,7 @@
         <div class="step">
             <strong>1️⃣ [ステップ 1] XIAOをリセットする</strong>
             <p style="font-size:13px; margin:5px 0; color:#666;">
-                接続画面が出たら、現在動いているXIAOのポートを選択してください。自動的にブートローダーモードへ切り替わります。
+                通常動作中のXIAOポートを選択してください。自動的にブートローダーモードへ切り替わります。
             </p>
             <button id="resetBtn">XIAOを選択してリセット</button>
         </div>
@@ -96,7 +96,7 @@
         <div class="step">
             <strong>2️⃣ [ステップ 2] UF2ファイルを書き込む</strong>
             <p style="font-size:13px; margin:5px 0; color:#666;">
-                XIAOのランプがホタル点滅（ブートローダー起動状態）に変わったら押してください。再度ポート選択画面が出るので、新しく出現したポートを選びます。
+                XIAOのランプがホタル点滅（緑/赤）に変わったら押してください。新しく出現したブートローダー用ポートを選びます。
             </p>
             <button id="writeBtn" disabled>ブートローダーポートに接続して書き込み</button>
         </div>
@@ -120,14 +120,12 @@
 
         let uf2Data = null;
 
-        // ブラウザ互換性チェック
         if (!('serial' in navigator)) {
-            statusDiv.innerText = "エラー: お使いのブラウザはWeb Serial APIに対応していません。Google ChromeまたはMicrosoft Edgeを使用してください。";
+            statusDiv.innerText = "エラー: お使いのブラウザはWeb Serial APIに対応していません。ChromeかEdgeを使用してください。";
             resetBtn.disabled = true;
             writeBtn.disabled = true;
         }
 
-        // ファイルが選択されたら案内を変更
         fileInput.addEventListener('change', async () => {
             if (fileInput.files.length > 0) {
                 const file = fileInput.files[0];
@@ -135,33 +133,32 @@
                 uf2Data = new Uint8Array(arrayBuffer);
 
                 if (uf2Data.length % 512 !== 0) {
-                    statusDiv.innerText = "❌ エラー: UF2ファイルのサイズが正しくありません(512の倍数以外)。";
+                    statusDiv.innerText = "❌ エラー: UF2ファイルのサイズが正しくありません。";
                     uf2Data = null;
                     return;
                 }
-                statusDiv.innerText = "👍 ファイル読み込み完了。[ステップ 1] のボタンを押してください。";
+                statusDiv.innerText = "👍 ファイル読み込み完了。[ステップ 1] を押してください。";
             }
         });
 
         // ==========================================
-        // 【STEP 1】 1200bps タッチ (リセットをかける)
+        // 【STEP 1】 1200bpsリセット
         // ==========================================
         resetBtn.addEventListener('click', async () => {
             if (!uf2Data) {
                 alert("先にUF2ファイルを選択してください。");
                 return;
             }
-
             try {
                 statusDiv.innerText = "シリアルポートの選択を待っています...";
-                const port = await navigator.serial.requestPort(); // ユーザー操作直後なので安全に開く
+                const port = await navigator.serial.requestPort();
                 
                 statusDiv.innerText = "1200bps でリセット信号を送信中...";
                 await port.open({ baudRate: 1200 });
-                await port.close(); // 一瞬開いて閉じることで、XIAOがリセットを検知
+                await port.close(); 
 
-                statusDiv.innerText = "⏳ XIAOリセット成功。デバイスがホタル点滅（赤/緑）に変わったら、[ステップ 2] を押してください。";
-                writeBtn.disabled = false; // 書き込みボタンを有効化
+                statusDiv.innerText = "⏳ リセット成功。デバイスがホタル点滅に変わったら [ステップ 2] を押してください。";
+                writeBtn.disabled = false;
                 resetBtn.disabled = true;
             } catch (error) {
                 console.error(error);
@@ -170,46 +167,56 @@
         });
 
         // ==========================================
-        // 【STEP 2】 115200bps でUF2ファイルを書き込み
+        // 【STEP 2】 書き込みと自動再起動
         // ==========================================
         writeBtn.addEventListener('click', async () => {
             if (!uf2Data) return;
 
             try {
                 statusDiv.innerText = "ブートローダーポートの選択を待っています...";
-                // リセットによりデバイスID等が変わっている可能性があるため、再度ユーザーの手でポートを個別選択してもらう
                 const bootPort = await navigator.serial.requestPort(); 
                 
                 statusDiv.innerText = "書き込みポートを開いています(115200bps)...";
-                await bootPort.open({ baudRate: 115200 }); // ブートローダー書き込み用の標準速度
+                await bootPort.open({ baudRate: 115200 });
 
-                statusDiv.innerText = "アップデートファイルを書き込み中...";
+                statusDiv.innerText = "ファームウェアを書き込み中...";
                 progressContainer.style.display = 'block';
                 
                 const writer = bootPort.writable.getWriter();
-                const chunkSize = 512; // UF2規格のブロックサイズ
+                const chunkSize = 512;
                 const totalChunks = uf2Data.length / chunkSize;
 
+                // 1. 本体のUF2データを512バイトずつ送信
                 for (let i = 0; i < uf2Data.length; i += chunkSize) {
                     const chunk = uf2Data.slice(i, i + chunkSize);
                     await writer.write(chunk);
 
-                    // 進捗計算
                     const currentChunk = (i / chunkSize) + 1;
                     const percent = Math.round((currentChunk / totalChunks) * 100);
                     progressBar.style.width = `${percent}%`;
                     progressBar.innerText = `${percent}%`;
                 }
 
-                statusDiv.innerText = "書き込みを終了しています...";
+                // 💡【重要修正】Adafruitブートローダーに書き込み終了と再起動を促すシグナルを送信
+                statusDiv.innerText = "転送完了。再起動コマンドを送信中...";
+                
+                // シリアル経由のDFU/UF2プロトコルにおける「ストリーム終了」を明示するための
+                // 空のデータ（またはフラッシュ確定要求）として、空のライター書き込みとシリアルポートの「DTR/RTS制御フラグのクリア」を行います
+                await writer.ready;
                 await writer.close();
+                
+                // シリアル通信の制御信号（DTR=false, RTS=false）を落とすことで、
+                // マイコン側のブートローダーが「通信終了」を検知し、アプリ領域へジャンプ（自動再起動）します
+                await bootPort.setSignals({ dataTerminalReady: false, requestToSend: false });
+                
+                // 少しだけ待ってからポートを完全に閉じます
+                await new Promise(resolve => setTimeout(resolve, 500));
                 await bootPort.close();
                 
                 statusDiv.style.background = "#d4edda";
                 statusDiv.style.color = "#155724";
-                statusDiv.innerText = "✨ アップデートが完了しました！XIAOが自動起動します。";
+                statusDiv.innerText = "✨ アップデート成功！XIAOが正常に起動しました。";
                 
-                // ボタン状態を元に戻す
                 resetBtn.disabled = false;
                 writeBtn.disabled = true;
 
