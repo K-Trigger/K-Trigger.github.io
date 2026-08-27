@@ -13,32 +13,43 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
         h1 { color: #0066cc; border-bottom: 2px solid #eee; padding-bottom: 10px; }
         .card { background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-top: 20px; }
-        button { background-color: #0066cc; color: white; border: none; padding: 12px 24px; font-size: 15px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 15px; }
+        .step-box { background: white; border: 1px solid #e0e0e0; border-radius: 6px; padding: 15px; margin-bottom: 15px; }
+        button { background-color: #0066cc; color: white; border: none; padding: 12px 24px; font-size: 15px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 10px; }
         button:hover { background-color: #0052a3; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
         #status { font-weight: bold; padding: 12px; border-radius: 4px; background: #eef; margin-top: 15px; border-left: 5px solid #0066cc; white-space: pre-wrap; }
         .progress-container { width: 100%; background-color: #e0e0e0; border-radius: 4px; margin-top: 15px; display: none; }
         .progress-bar { width: 0%; height: 20px; background-color: #28a745; border-radius: 4px; text-align: center; line-height: 20px; color: white; font-size: 12px; }
-        .download-box { margin-bottom: 20px; background: #e8f4fd; padding: 15px; border-radius: 6px; border: 1px solid #b8daff; }
     </style>
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web Flash Tool03h1>
-    <p>Arduino IDEと同等の仕組みを使用し、USB経由で直接ファームウェアを更新・自動起動します。</p>
+    <h1>XIAO nRF52840 Web Flash Tool 04</h1>
+    <p>Arduino IDEと同等の仕組みを2つのステップで確実に実行します。</p>
 
     <div class="card">
-        <div class="download-box">
-            <strong>📁 アップデート用 ZIP パッケージの準備</strong><br><br>
-            <button id="downloadBtn" style="background-color: #28a745; margin-top:0;">🌐 ネットから最新のZIPを読み込む</button>
-            <p style="text-align: center; margin: 5px 0; font-size: 13px; color:#666;">または手動でファイルを選択</p>
+        <!-- ファイル選択 -->
+        <div class="step-box">
+            <strong>📁 [準備] アップデート用 ZIP パッケージの選択</strong><br><br>
             <input type="file" id="zipFileInput" accept=".zip">
         </div>
 
-        <strong>⚡ ファームウェアの書き込み</strong>
-        <button id="flashBtn" disabled>XIAOに接続して書き込む</button>
+        <!-- ステップ1 -->
+        <div class="step-box">
+            <strong>1️⃣ [ステップ 1] XIAOをリセットモードにする</strong>
+            <p style="font-size: 13px; color:#666; margin: 5px 0;">通常動作中のXIAOのポートを選択してください。自動でホタル点滅に切り替わります。</p>
+            <button id="resetBtn" disabled>XIAOを接続してリセット</button>
+        </div>
 
-        <div id="status">ステータス: ZIPファイルを準備してください。</div>
+        <!-- ステップ2 -->
+        <div class="step-box">
+            <strong>2️⃣ [ステップ 2] ファームウェアを書き込む</strong>
+            <p style="font-size: 13px; color:#666; margin: 5px 0;">XIAOが赤/緑のホタル点滅に変わったら押してください。新しく出たブートローダーポートを選びます。</p>
+            <button id="flashBtn" disabled>ブートローダーに接続して書き込み</button>
+        </div>
+
+        <!-- 状態と進捗状況 -->
+        <div id="status">ステータス: DFU用ZIPファイルを選択してください。</div>
         
         <div class="progress-container" id="progressContainer">
             <div class="progress-bar" id="progressBar">0%</div>
@@ -46,8 +57,8 @@
     </div>
 
     <script>
-        const downloadBtn = document.getElementById('downloadBtn');
         const zipFileInput = document.getElementById('zipFileInput');
+        const resetBtn = document.getElementById('resetBtn');
         const flashBtn = document.getElementById('flashBtn');
         const statusDiv = document.getElementById('status');
         const progressContainer = document.getElementById('progressContainer');
@@ -55,75 +66,59 @@
 
         let zipDataBuffer = null;
 
-        // 🌐 A. サーバからZIPを直接ダウンロードして読み込む処理
-        downloadBtn.addEventListener('click', async () => {
-            statusDiv.innerText = "最新のファームウェアをダウンロード中...";
-            try {
-                // ご自身のGitHub Releasesやサーバにある「dfu_package.zip」のURLを指定してください
-                const targetUrl = "https://githubusercontent.com";
-                
-                const response = await fetch(targetUrl);
-                if (!response.ok) throw new Error("ダウンロードに失敗しました。");
-                
-                const arrayBuffer = await response.arrayBuffer();
-                zipDataBuffer = new Uint8Array(arrayBuffer);
-                
-                statusDiv.innerText = "✨ 最新のZIPファームウェアのダウンロードに成功しました！\n「XIAOに接続して書き込む」を押してください。";
-                flashBtn.disabled = false;
-            } catch (err) {
-                statusDiv.innerText = `❌ ダウンロードエラー: ${err.message}\n(下の手動ファイル選択を試してください)`;
-            }
-        });
-
-        // 📂 B. パソコン内から手動でZIPファイルを選択した時の処理
+        // 📂 ZIPファイルが選択された時の処理
         zipFileInput.addEventListener('change', async (e) => {
             const files = e.target.files;
             if (!files || files.length === 0) return;
             
-            statusDiv.innerText = "ローカルZIPファイルを読み込み中...";
             try {
                 const file = files[0];
                 const arrayBuffer = await file.arrayBuffer();
                 zipDataBuffer = new Uint8Array(arrayBuffer);
                 
-                statusDiv.innerText = "👍 ZIPファイルの読み込みが完了しました！\n「XIAOに接続して書き込む」を押してください。";
-                flashBtn.disabled = false;
+                statusDiv.innerText = "👍 ZIPファイルの読み込み完了！\n[ステップ 1] のボタンを押して通常ポートを選択してください。";
+                resetBtn.disabled = false;
             } catch (err) {
                 statusDiv.innerText = `❌ ファイル読み込みエラー: ${err.message}`;
+                resetBtn.disabled = true;
                 flashBtn.disabled = true;
             }
         });
 
-        // ⚡ C. 書き込みメイン処理（ユーザー・ジェスチャー制限対策版）
-        flashBtn.addEventListener('click', async () => {
+        // 1️⃣ 【STEP 1】 1200bpsリセット
+        resetBtn.addEventListener('click', async () => {
             if (!zipDataBuffer) return;
-            
             try {
-                flashBtn.disabled = true;
                 statusDiv.innerText = "通常動作中のXIAOポートを選択してください...";
-                
-                // 1️⃣ 最初のポート選択画面を出す（ユーザー操作直後なので安全）
                 const port = await navigator.serial.requestPort();
                 
-                // 2️⃣ 1200bpsリセットを実行
                 statusDiv.innerText = "XIAOにリセット信号(1200bps)を送信中...";
                 await port.open({ baudRate: 1200 });
                 await port.close(); 
                 
-                // 3️⃣ 連続して2回目のrequestPortを実行し、ブラウザのセキュリティガードをバイパス
-                statusDiv.innerText = "【重要】新しく出現した「ブートローダー(COMポート)」を選択してください...";
+                statusDiv.innerText = "⏳ リセット成功！\nXIAO本体のランプが緑/赤の「ホタル点滅」に変わったことを確認してから、[ステップ 2] を押してください。";
+                flashBtn.disabled = false;
+                resetBtn.disabled = true;
+            } catch (err) {
+                statusDiv.innerText = `❌ リセットエラー: ${err.message}`;
+            }
+        });
+
+        // 2️⃣ 【STEP 2】 nrfutilを使用した実際の書き込み
+        flashBtn.addEventListener('click', async () => {
+            if (!zipDataBuffer) return;
+            
+            try {
+                statusDiv.innerText = "新しく出現した「ブートローダーのCOMポート」を選択してください...";
+                // ユーザーが自分のタイミングで押すため、ブラウザのセキュリティ制限(User Gesture)を完璧にパスします
                 const dfuPort = await navigator.serial.requestPort();
-                
-                // 4️⃣ ポートを選択してもらった後に、XIAOの起動完了を少し待ってから開く
-                statusDiv.innerText = "⏳ XIAOブートローダーの起動完了を待っています...";
-                await new Promise(resolve => setTimeout(resolve, 3000));
                 
                 statusDiv.innerText = "nrfutilによる書き込みを開始します...";
                 progressContainer.style.display = 'block';
                 progressBar.style.width = '0%';
                 progressBar.innerText = '0%';
                 
-                // 5️⃣ nrfutil-jsライブラリで書き込み実行
+                // nrfutil-jsライブラリで書き込み実行
                 await nrfutil.flashDFUPackage(dfuPort, zipDataBuffer, (progress) => {
                     const percent = Math.round(progress * 100);
                     progressBar.style.width = `${percent}%`;
@@ -133,15 +128,17 @@
                 
                 statusDiv.style.background = "#d4edda";
                 statusDiv.style.color = "#155724";
-                statusDiv.innerText = "✨ アップデート大成功！\nデータが受理され、XIAOが通常モードで自動起動しました！";
+                statusDiv.innerText = "✨ アップデート大成功！\nデータが100%正常に受理され、XIAOが通常モードで自動起動しました！";
+                
+                // 状態の初期化
+                resetBtn.disabled = false;
+                flashBtn.disabled = true;
 
             } catch (err) {
                 console.error(err);
                 statusDiv.style.background = "#f8d7da";
                 statusDiv.style.color = "#721c24";
                 statusDiv.innerText = `❌ 書き込みエラー: ${err.message}`;
-            } finally {
-                flashBtn.disabled = false;
             }
         });
     </script>
