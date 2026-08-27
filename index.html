@@ -1,31 +1,64 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K-Trigger Firmware Web Installer<</title>
-    <style>
-        body { font-family: system-ui, sans-serif; text-align: center; padding: 50px; background-color: #f5f5f7; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: inline-block; width: 400px; }
-        button { padding: 12px 24px; font-size: 16px; font-weight: bold; background-color: #0071e3; color: white; border: none; border-radius: 8px; cursor: pointer; width: 100%; }
-        button:hover { background-color: #0077ed; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>K-Trigger Firmware Web Installer</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      text-align: center;
+      padding: 50px;
+      background-color: #f5f5f7;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      display: inline-block;
+      width: 400px;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: bold;
+      background-color: #0071e3;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      /* ボタン同士の間にすき間を作るために追加 */
+      margin-top: 15px; 
+    }
+    button:hover {
+      background-color: #0077ed;
+    }
+  </style>
 </head>
 <body>
+  <div class="card">
+    <h1>K-Trigger Firmware Web Installer</h1>
+    <p>Click on the type and version of K-Trigger you want to update to open the respective flash tool.</p>
+    
+    <!-- 1つ目のボタン -->
+    <button id="open-tool-btn">K-Trigger2/Go V3.1 RT</button>
+    
+    <!-- 🆕 2つ目の新しいボタン -->
+    <button id="new-tool-btn">K-Trigger2/Go V3.0 RT</button>
+  </div>
 
-    <div class="card">
-        <h1>K-Trigger Firmware Web Installer</h1>
-        <p>Click on the type and version of K-Trigger you want to update to open the respective flash tool.</p>
+  <script>
+    // 1つ目のボタンの処理
+    document.getElementById('open-tool-btn').addEventListener('click', () => {
+      window.location.href = './hikiganev3.1rt.html';
+    });
 
-        <!-- hikiganev3.1rt.html へ移動するボタン -->
-        <button id="open-tool-btn">K-Trigger2/Go V3.1 RT</button>
-    </div>
-
-    <script>
-        document.getElementById('open-tool-btn').addEventListener('click', () => {
-            // 別ページに切り替える処理
-            window.location.href = './hikiganev3.1rt.html';
-        });
-    </script>
+    // 🆕 2つ目のボタンの処理
+    document.getElementById('new-tool-btn').addEventListener('click', () => {
+      window.location.href = './hikiganev3.0rt.html';
+    });
+  </script>
 </body>
 </html>
