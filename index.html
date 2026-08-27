@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XIAO nRF52840 Web Uploader (Secure Mode)</title>
+    <title>XIAO nRF52840 Web Uploader</title>
     
-    <!-- ライブラリ群 -->
+    <!-- JSZip と nrfutil-js ライブラリ -->
     <script src="https://cloudflare.com"></script>
     <script src="https://jsdelivr.net"></script>
     
@@ -24,8 +24,8 @@
 </head>
 <body>
 
-    <h1>XIAO nRF52840 Web Flash Tool　02</h1>
-    <p>ブラウザのセキュリティ制限を回避し、Arduino IDEと同じ挙動で全自動更新します。</p>
+    <h1>XIAO nRF52840 Web Flash Tool03h1>
+    <p>Arduino IDEと同等の仕組みを使用し、USB経由で直接ファームウェアを更新・自動起動します。</p>
 
     <div class="card">
         <div class="download-box">
@@ -55,34 +55,46 @@
 
         let zipDataBuffer = null;
 
-        // 🌐 サーバからZIPを直接ダウンロードして読み込む処理
+        // 🌐 A. サーバからZIPを直接ダウンロードして読み込む処理
         downloadBtn.addEventListener('click', async () => {
             statusDiv.innerText = "最新のファームウェアをダウンロード中...";
             try {
-                // ご自身のGitHubなどのURLに変更してください
+                // ご自身のGitHub Releasesやサーバにある「dfu_package.zip」のURLを指定してください
                 const targetUrl = "https://githubusercontent.com";
+                
                 const response = await fetch(targetUrl);
                 if (!response.ok) throw new Error("ダウンロードに失敗しました。");
+                
                 const arrayBuffer = await response.arrayBuffer();
                 zipDataBuffer = new Uint8Array(arrayBuffer);
-                statusDiv.innerText = "✨ 最新のZIPファームウェアを読み込みました！\n下の「XIAOに接続して書き込む」を押してください。";
+                
+                statusDiv.innerText = "✨ 最新のZIPファームウェアのダウンロードに成功しました！\n「XIAOに接続して書き込む」を押してください。";
                 flashBtn.disabled = false;
             } catch (err) {
                 statusDiv.innerText = `❌ ダウンロードエラー: ${err.message}\n(下の手動ファイル選択を試してください)`;
             }
         });
 
-        // 📂 手動でZIPファイルを選択した時の処理
+        // 📂 B. パソコン内から手動でZIPファイルを選択した時の処理
         zipFileInput.addEventListener('change', async (e) => {
-            const file = e.target.files;
-            if (!file) return;
-            const arrayBuffer = await file.arrayBuffer();
-            zipDataBuffer = new Uint8Array(arrayBuffer);
-            statusDiv.innerText = "👍 ファイル読み込み完了。\n「XIAOに接続して書き込む」を押してください。";
-            flashBtn.disabled = false;
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            
+            statusDiv.innerText = "ローカルZIPファイルを読み込み中...";
+            try {
+                const file = files[0];
+                const arrayBuffer = await file.arrayBuffer();
+                zipDataBuffer = new Uint8Array(arrayBuffer);
+                
+                statusDiv.innerText = "👍 ZIPファイルの読み込みが完了しました！\n「XIAOに接続して書き込む」を押してください。";
+                flashBtn.disabled = false;
+            } catch (err) {
+                statusDiv.innerText = `❌ ファイル読み込みエラー: ${err.message}`;
+                flashBtn.disabled = true;
+            }
         });
 
-        // ⚡ 書き込みメイン処理（ユーザー・ジェスチャー制限対策版）
+        // ⚡ C. 書き込みメイン処理（ユーザー・ジェスチャー制限対策版）
         flashBtn.addEventListener('click', async () => {
             if (!zipDataBuffer) return;
             
@@ -90,7 +102,7 @@
                 flashBtn.disabled = true;
                 statusDiv.innerText = "通常動作中のXIAOポートを選択してください...";
                 
-                // 1️⃣ [ユーザー操作の熱量があるうちに取得] 最初のポート選択画面を出す
+                // 1️⃣ 最初のポート選択画面を出す（ユーザー操作直後なので安全）
                 const port = await navigator.serial.requestPort();
                 
                 // 2️⃣ 1200bpsリセットを実行
@@ -98,13 +110,11 @@
                 await port.open({ baudRate: 1200 });
                 await port.close(); 
                 
-                // 💡【最重要変更点】
-                // 5秒のタイマー待機を完全に排除しました。リセット直後にそのまま連続して
-                // 2回目のrequestPortを実行することで、ブラウザの「クリックの直後である」という判定を維持し、エラーを回避します。
+                // 3️⃣ 連続して2回目のrequestPortを実行し、ブラウザのセキュリティガードをバイパス
                 statusDiv.innerText = "【重要】新しく出現した「ブートローダー(COMポート)」を選択してください...";
                 const dfuPort = await navigator.serial.requestPort();
                 
-                // 3️⃣ ポートを選択してもらった後に、XIAOのハードウェア側の起動完了を少し待ってから開く
+                // 4️⃣ ポートを選択してもらった後に、XIAOの起動完了を少し待ってから開く
                 statusDiv.innerText = "⏳ XIAOブートローダーの起動完了を待っています...";
                 await new Promise(resolve => setTimeout(resolve, 3000));
                 
@@ -113,7 +123,7 @@
                 progressBar.style.width = '0%';
                 progressBar.innerText = '0%';
                 
-                // 4️⃣ nrfutil-jsライブラリで書き込み実行
+                // 5️⃣ nrfutil-jsライブラリで書き込み実行
                 await nrfutil.flashDFUPackage(dfuPort, zipDataBuffer, (progress) => {
                     const percent = Math.round(progress * 100);
                     progressBar.style.width = `${percent}%`;
