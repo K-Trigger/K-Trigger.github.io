@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gunstock Calibrator</title>
+<meta name="description" content="Meta Quest 3 / 3S app that measures the offsets of a controller mounted on a gunstock, using your real sights through passthrough.">
+<style>
+  :root { --bg: #ffffff; --fg: #1d1d1f; --muted: #5f6368; --line: #e3e3e6; --accent: #0b6bcb; --card: #f6f7f9; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #151517; --fg: #ececf0; --muted: #a0a3a8; --line: #2c2c31; --accent: #6aa9ff; --card: #1e1f23; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.7 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.8rem; margin: 0 0 4px; }
+  h2 { font-size: 1.2rem; margin: 32px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .lead { color: var(--muted); margin: 0 0 16px; }
+  .cover { width: 100%; height: auto; border-radius: 12px; display: block; margin: 16px 0; }
+  .note { background: var(--card); border-radius: 10px; padding: 12px 16px; }
+  nav a, a { color: var(--accent); }
+  nav a { margin-right: 16px; }
+  ol, ul { padding-left: 1.3em; }
+  section + section { margin-top: 48px; }
+  footer { margin-top: 48px; color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Gunstock Calibrator</h1>
+  <p class="lead">Meta Quest 3 / 3S — OSHIMA GIKEN</p>
+  <img class="cover" src="cover.png" alt="" onerror="this.remove()">
+  <nav><a href="#ja">日本語</a><a href="#en">English</a><a href="privacy/">Privacy Policy / プライバシーポリシー</a></nav>
+
+  <section id="ja" lang="ja">
+    <h2>どんなアプリ？</h2>
+    <p>Quest のコントローラーを取り付けたガンストック（銃床）を使う人のための、補正値の計測ツールです。パススルー（周りの現実の映像）越しに、実物の照準で的を狙ってトリガーを引くと、VR シューティングゲームに入力する 6 つの補正値（X・Y・Z・Pitch・Yaw・Roll）がわかります。</p>
+
+    <h2>使い方</h2>
+    <ol>
+      <li><strong>キャリブレーション</strong>：ガンストックの握りと、もう一方のコントローラーをそれぞれの手で握り、目の前で両方の握りが横にそろうように並べて、手に持ったコントローラーのトリガーを引きます。逆側が利き手・利き目になります。</li>
+      <li><strong>計測</strong>：5m 先（3m にも切り替え可）の的を、パススルー越しに実物の照準で狙ってトリガー（またはゲームパッドの A ボタン）を引きます。</li>
+      <li><strong>結果</strong>：コントローラーから照準線までの左右・上下、握りまでの前後と、コントローラーの軸から見た角度が表示されます。値はクリップボードにもコピーされます。</li>
+    </ol>
+    <p class="note">表示される値は、自動で合わせた目安です。ゲームに入力したあと、最後はゲームの中で微調整してください。</p>
+
+    <h2>操作（計測中は利き手のコントローラーだけで操作）</h2>
+    <ul>
+      <li>トリガー / ゲームパッド A：計測</li>
+      <li>A / X：的の距離 5m / 3m</li>
+      <li>B / Y：一つ前に戻る（結果 → 狙い直し → キャリブレーション）</li>
+      <li>スティック上下：的の高さ</li>
+    </ul>
+
+    <h2>入手方法</h2>
+    <p>現在は Meta Horizon Store のテスト版（招待リンク）で配布しています。</p>
+
+    <h2>お問い合わせ</h2>
+    <p><a href="mailto:vrdeveloper.kenji@gmail.com">vrdeveloper.kenji@gmail.com</a></p>
+  </section>
+
+  <section id="en" lang="en">
+    <h2>What is it?</h2>
+    <p>A measurement tool for people who use a gunstock with a Quest controller mounted on it. Aim at a target with your real sights through passthrough and pull the trigger, and the app gives you the six offsets (X, Y, Z, Pitch, Yaw, Roll) to enter in your VR shooting game.</p>
+
+    <h2>How to use</h2>
+    <ol>
+      <li><strong>Calibrate</strong>: hold the gunstock grip and the other controller in each hand. In front of your face, line up both grips side by side and pull the hand-held controller's trigger. The other side becomes your dominant hand and eye.</li>
+      <li><strong>Measure</strong>: aim at the target 5 m away (3 m also available) with your real sights through passthrough, and pull the trigger (or the gamepad A button).</li>
+      <li><strong>Result</strong>: the app shows left/right and up/down from the controller to your sight line, fore/aft to your grip, and the rotation from the controller's axis. The values are also copied to the clipboard.</li>
+    </ol>
+    <p class="note">The values are automatic starting points. Enter them in your game and fine-tune them there.</p>
+
+    <h2>Controls (dominant-hand controller only while measuring)</h2>
+    <ul>
+      <li>Trigger / gamepad A: measure</li>
+      <li>A / X: target distance 5 m / 3 m</li>
+      <li>B / Y: go back one step (result → aim again → calibration)</li>
+      <li>Thumbstick up/down: target height</li>
+    </ul>
+
+    <h2>Availability</h2>
+    <p>Currently distributed as a test build on the Meta Horizon Store (invite link).</p>
+
+    <h2>Contact</h2>
+    <p><a href="mailto:vrdeveloper.kenji@gmail.com">vrdeveloper.kenji@gmail.com</a></p>
+  </section>
+
+  <footer>© OSHIMA GIKEN — <a href="privacy/">Privacy Policy</a></footer>
+</main>
+</body>
+</html>
